@@ -1,0 +1,30 @@
+name: Nix flake.lock updater (reusable)
+on:
+  workflow_call:
+    inputs:
+      pr-title:
+        {
+          required: false,
+          default: "chore(nix): update flake.lock",
+          type: string,
+        }
+      pr-labels:
+        {
+          required: false,
+          default: "dependencies, nix, automated",
+          type: string,
+        }
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  update-flake-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: DeterminateSystems/determinate-nix-action@v3.5.2
+      - uses: DeterminateSystems/update-flake-lock@v24
+        with:
+          pr-title: "${{ inputs.pr-title }}"
+          pr-labels: "${{ inputs.pr-labels }}"
+          token: "${{ secrets.GITHUB_TOKEN }}"

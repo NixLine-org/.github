@@ -1,0 +1,29 @@
+name: NixLine CI (reusable)
+on:
+  workflow_call:
+    inputs:
+      channel: { required: false, default: stable, type: string }
+      packs:
+        {
+          required: false,
+          default: "gh-actions,precommit,editorconfig,codeowners,security,license,sbom,dependabot,flake-update",
+          type: string,
+        }
+      sync_mode: { required: false, default: ephemeral, type: string }
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: DeterminateSystems/determinate-nix-action@v3.5.2
+      - uses: actions/checkout@v5
+      - name: Materialize selected packs
+        env:
+          NIXLINE_PACKS: ${{ inputs.packs }}
+          NIXLINE_SYNC_MODE: ${{ inputs.sync_mode }}
+        run: |
+          nix run "github:NixLine-org/nixline-baseline?ref=${{ inputs.channel }}"#sync
+      - name: Run org checks
+        run: |
+          nix run "github:NixLine-org/nixline-baseline?ref=${{ inputs.channel }}"#check

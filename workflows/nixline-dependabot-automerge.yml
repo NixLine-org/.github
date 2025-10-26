@@ -1,0 +1,31 @@
+name: NixLine Dependabot Auto-merge (reusable)
+on:
+  workflow_call:
+    inputs:
+      allow_minor_patch: { required: false, default: "true", type: string }
+      allow_security_updates: { required: false, default: "true", type: string }
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - uses: actions/checkout@v5
+      - id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Decide merge
+        id: decision
+        run: |
+          type="${{ steps.meta.outputs.update-type }}"
+          security="${{ steps.meta.outputs.security-advisory-summary }}"
+          ok=false
+          if [[ "${{ inputs.allow_security_updates }}" == "true" && -n "$security" ]]; then ok=true; fi
+          if [[ "${{ inputs.allow_minor_patch }}" == "true" && ( "$type" == "version-update:semver-minor" || "$type" == "version-update:semver-patch" ) ]]; then ok=true; fi
+          echo "ok=$ok" >> $GITHUB_OUTPUT
+      - uses: peter-evans/enable-pull-request-automerge@v3
+        if: steps.decision.outputs.ok == 'true'
+        with: { merge-method: squash }

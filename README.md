@@ -25,18 +25,18 @@ NixLine uses a three-repository architecture with instant policy materialization
 
 ```mermaid
 graph TB
-    A[.github<br/>Reusable Workflows<br/>Auto-commits policy changes]
-    B[Consumer Repos<br/>Cron triggers weekly sync]
-    C[nixline-baseline<br/>Policy Definitions<br/>Source of truth]
+    A[".github<br/><br/>Reusable Workflows<br/><br/>Auto-commits policy changes"]
+    B["Consumer Repos<br/><br/>Cron triggers weekly sync"]
+    C["nixline-baseline<br/><br/>Policy Definitions<br/><br/>Source of truth"]
 
-    B -->|calls workflow| A
-    B -->|flake input| C
-    A -->|runs nix run .#sync| C
-    A -->|git push to main| B
+    B -->|"calls workflow"| A
+    B -->|"flake input"| C
+    A -->|"runs nix run .#sync"| C
+    A -->|"git push to main"| B
 
-    style A fill:#FFFFFF,stroke:#333,stroke-width:2px,color:#000000
-    style B fill:#FFFFFF,stroke:#333,stroke-width:2px,color:#000000
-    style C fill:#FFFFFF,stroke:#333,stroke-width:2px,color:#000000
+    style A fill:#FFFFFF,stroke:#333,stroke-width:3px,color:#000000,padding:20px
+    style B fill:#FFFFFF,stroke:#333,stroke-width:3px,color:#000000,padding:20px
+    style C fill:#FFFFFF,stroke:#333,stroke-width:3px,color:#000000,padding:20px
 ```
 
 The **`.github`** repository (this repo) contains reusable workflows that auto-commit policy updates. The **`nixline-baseline`** repository stores policy packs and Nix apps. **Consumer repos** are your actual projects with automated sync enabled.

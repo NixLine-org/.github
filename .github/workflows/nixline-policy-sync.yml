@@ -8,6 +8,16 @@ on:
         required: false
         type: string
         default: 'stable'
+      consumption_pattern:
+        description: 'Consumption pattern: template-based or direct'
+        required: false
+        type: string
+        default: 'template-based'
+      baseline_repo:
+        description: 'Baseline repository (for direct consumption pattern)'
+        required: false
+        type: string
+        default: 'NixLine-org/nixline-baseline'
 
 permissions:
   contents: write
@@ -31,7 +41,11 @@ jobs:
         id: check
         continue-on-error: true
         run: |
-          nix run .#check
+          if [ "${{ inputs.consumption_pattern }}" = "direct" ]; then
+            nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#check
+          else
+            nix run .#check
+          fi
           echo "check_result=$?" >> $GITHUB_OUTPUT
 
       - name: Sync policies if out of date
@@ -39,7 +53,11 @@ jobs:
         if: steps.check.outputs.check_result != '0'
         continue-on-error: true
         run: |
-          nix run .#sync
+          if [ "${{ inputs.consumption_pattern }}" = "direct" ]; then
+            nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#sync
+          else
+            nix run .#sync
+          fi
 
       - name: Check for changes
         id: git-check

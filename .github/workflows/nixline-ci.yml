@@ -25,5 +25,7 @@ jobs:
         run: |
           nix run "github:NixLine-org/nixline-baseline?ref=${{ inputs.channel }}"#sync
       - name: Run org checks
+        env:
+          NIXLINE_PACKS: ${{ inputs.packs }}
         run: |
           nix run "github:NixLine-org/nixline-baseline?ref=${{ inputs.channel }}"#check

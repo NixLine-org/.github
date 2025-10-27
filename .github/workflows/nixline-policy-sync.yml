@@ -18,6 +18,10 @@ on:
         required: false
         type: string
         default: 'NixLine-org/nixline-baseline'
+      packs:
+        description: 'Comma-separated list of packs to sync (overrides defaults)'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -40,6 +44,8 @@ jobs:
       - name: Check policy compliance
         id: check
         continue-on-error: true
+        env:
+          NIXLINE_PACKS: ${{ inputs.packs }}
         run: |
           if [ "${{ inputs.consumption_pattern }}" = "direct" ]; then
             nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#check
@@ -52,6 +58,8 @@ jobs:
         id: sync
         if: steps.check.outputs.check_result != '0'
         continue-on-error: true
+        env:
+          NIXLINE_PACKS: ${{ inputs.packs }}
         run: |
           if [ "${{ inputs.consumption_pattern }}" = "direct" ]; then
             nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#sync

@@ -21,17 +21,17 @@ GitHub allows organizations to create a special repository named `.github` that 
 
 ## Architecture
 
-NixLine uses a three-repository architecture with instant policy materialization:
+NixLine uses a three-repository architecture with instant policy materialization. Consumer repositories can use either template-based or direct consumption patterns:
 
 ```mermaid
 graph TB
     A[".github<br/><br/>Reusable Workflows<br/><br/>Auto-commits policy changes"]
-    B["Consumer Repos<br/><br/>Cron triggers weekly sync"]
+    B["Consumer Repos<br/><br/>Template-based or Direct consumption"]
     C["nixline-baseline<br/><br/>Policy Definitions<br/><br/>Source of truth"]
 
     B -->|"calls workflow"| A
-    B -->|"flake input"| C
-    A -->|"runs nix run .#sync"| C
+    B -->|"references baseline"| C
+    A -->|"runs sync/check commands"| C
     A -->|"git push to main"| B
 
     style A fill:#FFFFFF,stroke:#333,stroke-width:3px,color:#000000,padding:20px
@@ -40,6 +40,10 @@ graph TB
 ```
 
 The **`.github`** repository (this repo) contains reusable workflows that auto-commit policy updates. The **`nixline-baseline`** repository stores policy packs and Nix apps. **Consumer repos** are your actual projects with automated sync enabled.
+
+**Two consumption patterns:**
+- **Template-based:** Consumer repos have `flake.nix` with baseline as input, run `nix run .#sync`
+- **Direct consumption:** Consumer repos call baseline directly: `nix run github:org/baseline#sync`
 
 **Instant materialization:** Policy changes are pushed directly to consumer repos without PR bottlenecks. Organizations requiring review can use branch protection rules.
 
@@ -66,7 +70,11 @@ jobs:
 
 **What it does:**
 
-The workflow runs `nix run .#check` to validate policies. If out of sync, it runs `nix run .#sync` to materialize updated policy files, then auto-commits and pushes changes directly to the main branch.
+The workflow runs sync/check commands to validate policies. If out of sync, it materializes updated policy files, then auto-commits and pushes changes directly to the main branch.
+
+**Command patterns used:**
+- **Template-based repos:** `nix run .#check` and `nix run .#sync`
+- **Direct consumption repos:** `nix run github:ORG/nixline-baseline#check` and `nix run github:ORG/nixline-baseline#sync`
 
 **Key advantage:** Traditional governance systems create pull requests for every baseline update, requiring manual review across potentially hundreds of repositories. This workflow eliminates that bottleneck by materializing changes instantly through Nix flakes and committing them automatically. Policy updates propagate immediately without manual intervention.
 
@@ -179,14 +187,13 @@ This calls the reusable workflow which handles checking, syncing and committing 
 
 ### Optional: CI Policy Check
 
-Add a policy check to your CI workflow to ensure policies stay in sync:
+Add a policy check to your CI workflow to ensure policies stay in sync. Choose the pattern based on your consumption approach:
 
+**Template-based approach:**
 ```yaml
 # .github/workflows/ci.yml
 name: CI
-
 on: [push, pull_request]
-
 jobs:
   policy-check:
     runs-on: ubuntu-latest
@@ -195,6 +202,21 @@ jobs:
       - uses: cachix/install-nix-action@v24
       - name: Verify policies are in sync
         run: nix run .#check
+```
+
+**Direct consumption approach:**
+```yaml
+# .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+jobs:
+  policy-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v24
+      - name: Verify policies are in sync
+        run: nix run github:YOUR-ORG/nixline-baseline#check
 ```
 
 ---

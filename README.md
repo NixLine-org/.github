@@ -60,12 +60,38 @@ Automatically syncs policy files from the baseline repository with instant mater
 **Included in:** Consumer template (`nixline-baseline/templates/consumer/.github/workflows/policy-sync.yml`)
 
 **Usage:**
+
+**Template-based repositories:**
 ```yaml
-# Consumers get this workflow from the template
-# It runs weekly on Sunday at 2 PM UTC by default
+# .github/workflows/policy-sync.yml
+name: Policy Sync
+on:
+  schedule:
+    - cron: '0 14 * * 0'  # Weekly on Sunday at 2 PM UTC
+  workflow_dispatch:
 jobs:
   sync:
-    uses: NixLine-org/.github/.github/workflows/nixline-policy-sync.yml@stable
+    uses: YOUR-ORG/.github/.github/workflows/nixline-policy-sync.yml@stable
+    with:
+      consumption_pattern: template-based
+      baseline_ref: stable
+```
+
+**Direct consumption repositories:**
+```yaml
+# .github/workflows/policy-sync.yml (or add to existing ci.yml)
+name: Policy Sync
+on:
+  schedule:
+    - cron: '0 14 * * 0'  # Weekly on Sunday at 2 PM UTC
+  workflow_dispatch:
+jobs:
+  sync:
+    uses: YOUR-ORG/.github/.github/workflows/nixline-policy-sync.yml@stable
+    with:
+      consumption_pattern: direct
+      baseline_repo: YOUR-ORG/nixline-baseline
+      baseline_ref: stable
 ```
 
 **What it does:**

@@ -125,6 +125,73 @@ schedule:
   #- cron: '0 9 * * 1'   # Monday 9 AM UTC
 ```
 
+### Policy Sync with Auto-Approved PRs (`nixline-policy-sync-pr.yml`)
+
+Creates pull requests for policy updates with optional auto-approval for enterprise governance requirements.
+
+**Enterprise-Ready Features:**
+- Creates PRs instead of direct commits for audit trails
+- Auto-approval integration for policy-only changes
+- Works with GitHub's auto-merge functionality
+- Detailed PR descriptions with change summaries
+- Support for branch protection rules
+
+**Usage for Auto-Approved PR Pattern:**
+```yaml
+# .github/workflows/policy-sync.yml
+name: Policy Sync
+on:
+  schedule:
+    - cron: '0 14 * * 0'  # Weekly on Sunday at 2 PM UTC
+  workflow_dispatch:
+
+jobs:
+  sync:
+    uses: YOUR-ORG/.github/.github/workflows/nixline-policy-sync-pr.yml@stable
+    with:
+      consumption_pattern: direct
+      baseline_repo: YOUR-ORG/nixline-baseline
+      baseline_ref: stable
+      create_pr: true
+      auto_approve: true
+```
+
+**Required Auto-Approval Workflow:**
+```yaml
+# .github/workflows/auto-approve.yml
+name: Auto Approve Policy Updates
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  auto-approve:
+    if: github.actor == 'github-actions[bot]' && contains(github.event.pull_request.title, 'Policy Sync')
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Auto approve policy sync PRs
+        uses: hmarr/auto-approve-action@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          pull-request-number: ${{ github.event.pull_request.number }}
+          merge-method: squash
+```
+
+**Enterprise Setup Requirements:**
+1. Enable branch protection requiring PR reviews in repository settings
+2. Configure auto-merge in repository settings
+3. Add the auto-approval workflow to consumer repositories
+4. Ensure CI checks validate policy changes before merge
+
+**Demonstrated in:** [nixline-demo3](https://github.com/NixLine-org/nixline-demo3) showcases this pattern with pure upstream consumption and zero maintenance overhead.
+
 ---
 
 ## Forking for Your Organization

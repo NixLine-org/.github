@@ -179,6 +179,11 @@ on:
     - cron: '0 14 * * 0'  # Weekly on Sunday at 2 PM UTC
   workflow_dispatch:
 
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
 jobs:
   sync:
     uses: YOUR-ORG/.github/.github/workflows/nixline-policy-sync-pr.yml@stable

@@ -41,9 +41,10 @@ graph TB
 
 The **`.github`** repository (this repo) contains reusable workflows that auto-commit policy updates. The **`nixline-baseline`** repository stores policy packs and Nix apps. **Consumer repos** are your actual projects with automated sync enabled.
 
-**Two consumption patterns:**
-- **Template-based:** Consumer repos have `flake.nix` with baseline as input, run `nix run .#sync`
-- **Direct consumption:** Consumer repos call baseline directly: `nix run github:org/baseline#sync`
+**Three consumption patterns:**
+- **Direct (Default):** `nix run github:org/baseline#sync` - no configuration files needed
+- **Configuration-driven (Recommended):** `nix run github:org/baseline#sync -- --config .nixline.toml` - organization branding via TOML
+- **Template-based:** Consumer repos have `flake.nix` with baseline as input for external packs
 
 **Instant materialization:** Policy changes are pushed directly to consumer repos without PR bottlenecks. Organizations requiring review can use branch protection rules.
 
@@ -77,7 +78,7 @@ jobs:
       baseline_ref: stable
 ```
 
-**Direct consumption repositories:**
+**Direct consumption and configuration-driven repositories:**
 ```yaml
 # .github/workflows/policy-sync.yml (or add to existing ci.yml)
 name: Policy Sync
@@ -92,6 +93,8 @@ jobs:
       consumption_pattern: direct
       baseline_repo: YOUR-ORG/nixline-baseline
       baseline_ref: stable
+      # Optional: specify configuration file for organization branding
+      config_file: .nixline.toml
 ```
 
 **What it does:**
@@ -101,8 +104,16 @@ The workflow runs sync/check commands to validate policies. If out of sync, it m
 **Command patterns used:**
 - **Template-based repos:** `nix run .#check` and `nix run .#sync`
 - **Direct consumption repos:** `nix run github:ORG/nixline-baseline#check` and `nix run github:ORG/nixline-baseline#sync`
+- **Configuration-driven repos:** `nix run github:ORG/nixline-baseline#sync -- --config .nixline.toml`
 
 **Key advantage:** Traditional governance systems create pull requests for every baseline update, requiring manual review across potentially hundreds of repositories. This workflow eliminates that bottleneck by materializing changes instantly through Nix flakes and committing them automatically. Policy updates propagate immediately without manual intervention.
+
+**Enhanced baseline features:**
+- **Runtime configuration passing**: Organizations can customize policies via `.nixline.toml` without forking
+- **CLI overrides**: `--override org.name=MyCompany` for runtime customization
+- **Custom file support**: Complete file override capability with `custom_file` parameters
+- **Parameterized packs**: All policy packs accept configuration for organization branding
+- **SPDX license fetching**: Automatic license retrieval with proper attribution
 
 **Branch protection:** Organizations requiring review before policy changes can configure branch protection rules to enforce PR workflows.
 
@@ -230,7 +241,7 @@ jobs:
         run: nix run .#check
 ```
 
-**Direct consumption approach:**
+**Direct consumption and configuration-driven approach:**
 ```yaml
 # .github/workflows/ci.yml
 name: CI
@@ -243,6 +254,7 @@ jobs:
       - uses: cachix/install-nix-action@v31
       - name: Verify policies are in sync
         run: nix run github:YOUR-ORG/nixline-baseline#check
+        # Note: Configuration files are automatically detected by the check command
 ```
 
 ---

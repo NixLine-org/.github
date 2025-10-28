@@ -54,6 +54,39 @@ The **`.github`** repository (this repo) contains reusable workflows that auto-c
 
 ## Available Workflows
 
+This repository provides several reusable workflows for NixLine automation. Each workflow serves a specific purpose in the governance and automation pipeline.
+
+### Overview
+
+| Workflow | Purpose | Used By | Pattern |
+|----------|---------|---------|---------|
+| `nixline-ci.yml` | Basic CI validation | All consumer repos | All patterns |
+| `nixline-policy-sync.yml` | Direct policy sync | Consumer repos | Direct commit |
+| `nixline-policy-sync-pr.yml` | Policy sync with PRs | Consumer repos | Auto-approved PRs |
+| `nixline-dependabot-automerge.yml` | Dependabot auto-merge | Consumer repos | Dependency automation |
+| `nixline-flake-update.yml` | Flake lock updates | Template-based repos | Template pattern |
+| `nixline-policy-flake-lock-only.yml` | Policy lock updates | Template-based repos | Template pattern |
+
+### Basic CI (`nixline-ci.yml`)
+
+Provides fundamental CI validation for NixLine consumer repositories including policy compliance checks and basic testing.
+
+**Features:**
+- Policy compliance validation
+- Nix flake evaluation
+- Basic health checks
+- Supports all consumption patterns
+
+**Usage:**
+```yaml
+jobs:
+  nixline-ci:
+    uses: YOUR-ORG/.github/.github/workflows/nixline-ci.yml@stable
+    with:
+      channel: stable
+      consumption_pattern: direct  # or configuration-driven, template-based
+```
+
 ### Policy Sync (`nixline-policy-sync.yml`)
 
 Automatically syncs policy files from the baseline repository with instant materialization.
@@ -172,7 +205,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Auto approve policy sync PRs
-        uses: hmarr/auto-approve-action@v3
+        uses: hmarr/auto-approve-action@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -191,6 +224,83 @@ jobs:
 4. Ensure CI checks validate policy changes before merge
 
 **Demonstrated in:** [nixline-demo3](https://github.com/NixLine-org/nixline-demo3) showcases this pattern with pure upstream consumption and zero maintenance overhead.
+
+### Dependabot Auto-Merge (`nixline-dependabot-automerge.yml`)
+
+Automatically approves and merges Dependabot PRs for patch and minor updates when CI passes.
+
+**Features:**
+- Auto-approves patch and minor version updates
+- Requires CI checks to pass before merge
+- Maintains audit trail through PR comments
+- Configurable version update policies
+
+**Usage:**
+```yaml
+# .github/workflows/dependabot-automerge.yml
+name: Dependabot Auto-Merge
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  automerge:
+    if: github.actor == 'dependabot[bot]'
+    uses: YOUR-ORG/.github/.github/workflows/nixline-dependabot-automerge.yml@stable
+```
+
+**Merge Policy:**
+- Patch updates (1.0.0 → 1.0.1): Auto-merge
+- Minor updates (1.0.0 → 1.1.0): Auto-merge
+- Major updates (1.0.0 → 2.0.0): Require manual review
+
+### Flake Updates (`nixline-flake-update.yml`)
+
+Updates flake.lock files for template-based repositories to keep dependencies current.
+
+**Features:**
+- Automated flake.lock updates
+- Creates PRs with dependency changes
+- Includes detailed change summaries
+- Template-based consumption pattern only
+
+**Usage:**
+```yaml
+# .github/workflows/flake-update.yml
+name: Flake Update
+on:
+  schedule:
+    - cron: '0 0 * * 1'  # Weekly on Monday
+  workflow_dispatch:
+
+jobs:
+  update:
+    uses: YOUR-ORG/.github/.github/workflows/nixline-flake-update.yml@stable
+```
+
+### Policy Lock Updates (`nixline-policy-flake-lock-only.yml`)
+
+Updates only the baseline policy flake lock for template-based repositories.
+
+**Features:**
+- Updates baseline flake input only
+- Preserves other dependency versions
+- Focused policy-only updates
+- Template-based consumption pattern only
+
+**Usage:**
+```yaml
+# .github/workflows/policy-lock-update.yml
+name: Policy Lock Update
+on:
+  schedule:
+    - cron: '0 12 * * 0'  # Weekly on Sunday
+  workflow_dispatch:
+
+jobs:
+  update:
+    uses: YOUR-ORG/.github/.github/workflows/nixline-policy-flake-lock-only.yml@stable
+```
 
 ---
 

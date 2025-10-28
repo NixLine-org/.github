@@ -63,6 +63,7 @@ This repository provides several reusable workflows for NixLine automation. Each
 | `nixline-ci.yml` | Basic CI validation | All consumer repos | All patterns |
 | `nixline-policy-sync.yml` | Direct policy sync | Consumer repos | Direct commit |
 | `nixline-policy-sync-pr.yml` | Policy sync with PRs | Consumer repos | Auto-approved PRs |
+| `nixline-auto-approve.yml` | Auto-approve PRs | Consumer repos | Auto-approved PRs |
 | `nixline-dependabot-automerge.yml` | Dependabot auto-merge | Consumer repos | Dependency automation |
 | `nixline-flake-update.yml` | Flake lock updates | Template-based repos | Template pattern |
 | `nixline-policy-flake-lock-only.yml` | Policy lock updates | Template-based repos | Template pattern |
@@ -199,22 +200,13 @@ on:
 
 jobs:
   auto-approve:
-    if: github.actor == 'github-actions[bot]' && contains(github.event.pull_request.title, 'Policy Sync')
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-    steps:
-      - name: Auto approve policy sync PRs
-        uses: hmarr/auto-approve-action@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Enable auto-merge
-        uses: peter-evans/enable-pull-request-automerge@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          pull-request-number: ${{ github.event.pull_request.number }}
-          merge-method: squash
+    uses: YOUR-ORG/.github/.github/workflows/nixline-auto-approve.yml@stable
+    with:
+      pr_title_pattern: "Policy Sync"
+      actor_filter: "github-actions[bot]"
+      merge_method: "squash"
+      enable_auto_merge: true
+      require_checks: true
 ```
 
 **Enterprise Setup Requirements:**
@@ -224,6 +216,48 @@ jobs:
 4. Ensure CI checks validate policy changes before merge
 
 **Demonstrated in:** [nixline-demo3](https://github.com/NixLine-org/nixline-demo3) showcases this pattern with pure upstream consumption and zero maintenance overhead.
+
+### Auto-Approve (`nixline-auto-approve.yml`)
+
+Reusable workflow for automatically approving and merging PRs that meet specified criteria.
+
+**Features:**
+- Configurable PR title patterns for approval
+- Actor filtering for security
+- Multiple merge methods (merge, squash, rebase)
+- Optional auto-merge enablement
+- Detailed approval comments with audit trail
+
+**Usage:**
+```yaml
+# .github/workflows/auto-approve.yml
+name: Auto Approve
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  auto-approve:
+    uses: YOUR-ORG/.github/.github/workflows/nixline-auto-approve.yml@stable
+    with:
+      pr_title_pattern: "Policy Sync"  # Pattern to match in PR title
+      actor_filter: "github-actions[bot]"  # Must be created by this actor
+      merge_method: "squash"  # merge, squash, or rebase
+      enable_auto_merge: true  # Enable GitHub auto-merge
+      require_checks: true  # Require status checks to pass
+```
+
+**Common Use Cases:**
+- Policy sync PRs from automated workflows
+- Dependabot PRs for patch/minor updates
+- Documentation updates from bots
+- License file updates from SPDX fetching
+
+**Security Considerations:**
+- Always use actor filtering to prevent unauthorized approvals
+- Configure branch protection rules as additional safeguards
+- Require status checks to pass before auto-merge
+- Use specific PR title patterns to limit scope
 
 ### Dependabot Auto-Merge (`nixline-dependabot-automerge.yml`)
 

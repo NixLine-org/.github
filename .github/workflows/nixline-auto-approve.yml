@@ -1,0 +1,72 @@
+name: NixLine Auto-Approve (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      pr_title_pattern:
+        description: 'Pattern to match in PR title for auto-approval'
+        required: false
+        type: string
+        default: 'Policy Sync'
+      actor_filter:
+        description: 'GitHub actor that must have created the PR'
+        required: false
+        type: string
+        default: 'github-actions[bot]'
+      merge_method:
+        description: 'Auto-merge method: merge, squash, or rebase'
+        required: false
+        type: string
+        default: 'squash'
+      enable_auto_merge:
+        description: 'Enable auto-merge after approval'
+        required: false
+        type: boolean
+        default: true
+      require_checks:
+        description: 'Require status checks to pass before merge'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  auto-approve:
+    if: github.actor == inputs.actor_filter && contains(github.event.pull_request.title, inputs.pr_title_pattern)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Auto approve PR
+        uses: hmarr/auto-approve-action@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge
+        if: inputs.enable_auto_merge
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          pull-request-number: ${{ github.event.pull_request.number }}
+          merge-method: ${{ inputs.merge_method }}
+
+      - name: Add approval comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🤖 **Auto-approved** by NixLine automation
+
+            **Approval criteria met:**
+            - Actor: \`${{ github.actor }}\`
+            - Title pattern: \`${{ inputs.pr_title_pattern }}\`
+            - Auto-merge: ${{ inputs.enable_auto_merge && 'enabled' || 'disabled' }}
+            - Merge method: \`${{ inputs.merge_method }}\`
+
+            This PR will auto-merge when all required checks pass.`
+            })

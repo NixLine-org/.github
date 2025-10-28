@@ -1,0 +1,195 @@
+name: NixLine Policy Sync with PR (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      baseline_ref:
+        description: 'Baseline reference (branch/tag) to sync from'
+        required: false
+        type: string
+        default: 'stable'
+      consumption_pattern:
+        description: 'Consumption pattern: template-based, direct, or configuration-driven'
+        required: false
+        type: string
+        default: 'direct'
+      baseline_repo:
+        description: 'Baseline repository (for direct consumption pattern)'
+        required: false
+        type: string
+        default: 'NixLine-org/nixline-baseline'
+      config_file:
+        description: 'Configuration file path (for configuration-driven pattern)'
+        required: false
+        type: string
+        default: '.nixline.toml'
+      create_pr:
+        description: 'Create PR instead of direct push'
+        required: false
+        type: boolean
+        default: true
+      auto_approve:
+        description: 'Enable auto-approval for created PRs'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  policy-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Check policy compliance
+        id: check
+        continue-on-error: true
+        run: |
+          if [ "${{ inputs.consumption_pattern }}" = "direct" ]; then
+            nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#check
+          elif [ "${{ inputs.consumption_pattern }}" = "configuration-driven" ]; then
+            nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#check
+          else
+            nix run .#check
+          fi
+          echo "check_result=$?" >> $GITHUB_OUTPUT
+
+      - name: Sync policies if out of date
+        id: sync
+        if: steps.check.outputs.check_result != '0'
+        continue-on-error: true
+        run: |
+          if [ "${{ inputs.consumption_pattern }}" = "direct" ]; then
+            nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#sync
+          elif [ "${{ inputs.consumption_pattern }}" = "configuration-driven" ]; then
+            if [ -f "${{ inputs.config_file }}" ]; then
+              nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#sync -- --config "${{ inputs.config_file }}"
+            else
+              nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#sync
+            fi
+          else
+            nix run .#sync
+          fi
+
+      - name: Check for changes
+        id: git-check
+        if: steps.check.outputs.check_result != '0' && steps.sync.outcome == 'success'
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            # Generate list of changed files for PR description
+            echo "changed_files<<EOF" >> $GITHUB_OUTPUT
+            git diff --name-only >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        id: create-pr
+        if: steps.git-check.outputs.has_changes == 'true' && inputs.create_pr
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            Policy Sync from baseline
+
+            Automated policy sync from nixline-baseline@${{ inputs.baseline_ref }}
+
+            Changes:
+            ${{ steps.git-check.outputs.changed_files }}
+          title: "Policy Sync: Update from baseline@${{ inputs.baseline_ref }}"
+          body: |
+            ## Policy Sync Update
+
+            This PR contains automated policy updates from the NixLine baseline repository.
+
+            **Baseline Reference:** `${{ inputs.baseline_ref }}`
+            **Consumption Pattern:** `${{ inputs.consumption_pattern }}`
+            **Baseline Repository:** `${{ inputs.baseline_repo }}`
+
+            ### Changed Files
+            ```
+            ${{ steps.git-check.outputs.changed_files }}
+            ```
+
+            ### What happens next?
+
+            - ✅ CI checks will run to validate the policy changes
+            - 🔍 Auto-approval workflow will review this PR
+            - 🚀 PR will auto-merge when all checks pass
+
+            ---
+
+            🤖 This PR was created automatically by the NixLine policy sync workflow.
+          branch: policy-sync-${{ github.run_number }}
+          delete-branch: true
+          labels: |
+            automated
+            policy-sync
+            nixline
+
+      - name: Direct push (fallback)
+        id: push
+        if: steps.git-check.outputs.has_changes == 'true' && !inputs.create_pr
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .editorconfig .github/ LICENSE SECURITY.md .pre-commit-config.yaml
+          git commit -m "Policy Sync from baseline
+
+          Automated policy sync from nixline-baseline@${{ inputs.baseline_ref }}"
+          git push
+
+      - name: Create issue on sync failure
+        if: steps.sync.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Policy sync failed',
+              body: `## Policy Sync Failure
+
+            The automated policy sync workflow failed to materialize policies from the baseline.
+
+            **Baseline reference:** \`${{ inputs.baseline_ref }}\`
+            **Consumption pattern:** \`${{ inputs.consumption_pattern }}\`
+            **Workflow run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            ### Next Steps
+
+            Review the workflow logs to identify the sync failure. Common causes include:
+            - Baseline flake evaluation errors
+            - Network issues accessing the baseline repository
+            - Invalid policy pack configuration
+            - Configuration file parsing errors
+
+            Once resolved, the next scheduled sync will retry automatically.`,
+              labels: ['automated', 'policy', 'sync-failure']
+            });
+
+      - name: Policy sync complete
+        if: steps.check.outputs.check_result == '0'
+        run: |
+          echo "✅ Policies are already in sync with baseline"
+
+      - name: Output PR details
+        if: steps.create-pr.outputs.pull-request-number
+        run: |
+          echo "📋 Created PR #${{ steps.create-pr.outputs.pull-request-number }}"
+          echo "🔗 PR URL: ${{ steps.create-pr.outputs.pull-request-url }}"

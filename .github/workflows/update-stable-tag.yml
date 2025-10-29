@@ -24,6 +24,18 @@ on:
           Commit message: {commit_message}
 
           This tag was updated automatically when {target_branch} branch was updated.
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Name of the stable tag to update'
+        required: false
+        type: string
+        default: 'stable'
+      target_branch:
+        description: 'Branch to create tag from'
+        required: false
+        type: string
+        default: 'main'
 
 permissions:
   contents: write

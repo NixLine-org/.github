@@ -69,7 +69,8 @@ jobs:
             CHECK_EXIT_CODE=$?
           fi
           echo "check_result=$CHECK_EXIT_CODE" >> $GITHUB_OUTPUT
-          exit $CHECK_EXIT_CODE
+          # Don't exit with error code to allow subsequent steps to run
+          exit 0
 
       - name: Sync policies if out of date
         id: sync

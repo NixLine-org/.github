@@ -49,10 +49,13 @@ jobs:
         run: |
           if [ "${{ inputs.consumption_pattern }}" = "template-based" ]; then
             nix run .#check
+            CHECK_EXIT_CODE=$?
           else
             nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#check
+            CHECK_EXIT_CODE=$?
           fi
-          echo "check_result=$?" >> $GITHUB_OUTPUT
+          echo "check_result=$CHECK_EXIT_CODE" >> $GITHUB_OUTPUT
+          exit 0
 
       - name: Sync policies if out of date
         id: sync

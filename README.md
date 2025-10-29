@@ -342,6 +342,45 @@ jobs:
     uses: YOUR-ORG/.github/.github/workflows/nixline-policy-flake-lock-only.yml@stable
 ```
 
+### Stable Tag Updates (`update-stable-tag.yml`)
+
+Automatically keeps stable tags synchronized with the latest main branch commits.
+
+**Features:**
+- Automated stable tag updates on push to main
+- Daily cron schedule as backup
+- Manual trigger support
+- Configurable tag names and target branches
+- Detailed verification and logging
+
+**Usage:**
+```yaml
+# .github/workflows/update-stable-tag.yml
+name: Always Keep Stable Tag Updated
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 6 AM UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-stable-tag:
+    uses: YOUR-ORG/.github/.github/workflows/update-stable-tag.yml@stable
+    with:
+      tag_name: stable
+      target_branch: main
+```
+
+**IMPORTANT SECURITY CONSIDERATION:**
+
+When using this workflow, always enable branch protection on your main branch. The stable tag automatically updates to point to the latest main commit, so any direct push to main would immediately be tagged as "stable" and potentially deployed to production or consumed by other repositories.
+
+Configure branch protection to require pull request reviews before merging, dismiss stale reviews when new commits are pushed, require status checks to pass, and include administrators in restrictions. This ensures all changes go through proper review before being automatically tagged as stable.
+
 ---
 
 ## Forking for Your Organization

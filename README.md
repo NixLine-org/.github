@@ -2,6 +2,35 @@
 
 This repository contains reusable GitHub Actions workflows for the NixLine organization.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Available Workflows](#available-workflows)
+- [Workflow Diagrams](#workflow-diagrams)
+  - [Policy Sync Workflow Comparison](#policy-sync-workflow-comparison)
+  - [CI Workflow](#ci-workflow)
+  - [Pre-commit Hooks Workflow](#pre-commit-hooks-workflow)
+  - [Auto-Approve Workflow](#auto-approve-workflow)
+  - [Dependabot Auto-Merge Workflow](#dependabot-auto-merge-workflow)
+  - [Stable Tag Update Workflow](#stable-tag-update-workflow)
+- [Workflow Documentation](#workflow-documentation)
+  - [Basic CI](#basic-ci-nixline-ciyml)
+  - [Policy Sync (Direct)](#policy-sync-nixline-policy-syncyml)
+  - [Policy Sync with PRs](#policy-sync-with-auto-approved-prs-nixline-policy-sync-pryml)
+  - [Auto-Approve](#auto-approve-nixline-auto-approveyml)
+  - [Dependabot Auto-Merge](#dependabot-auto-merge-nixline-dependabot-automergeyml)
+  - [Flake Updates](#flake-updates-nixline-flake-updateyml)
+  - [Policy Lock Updates](#policy-lock-updates-nixline-policy-flake-lock-onlyyml)
+  - [Pre-commit Hooks](#pre-commit-hooks-nixline-pre-commityml)
+  - [Stable Tag Updates](#stable-tag-updates-update-stable-tagyml)
+- [Forking for Your Organization](#forking-for-your-organization)
+- [Workflow Best Practices](#workflow-best-practices)
+- [Consumer Workflow Setup](#consumer-workflow-setup)
+- [Relationship to Baseline](#relationship-to-baseline)
+- [CODEOWNERS for This Repository](#codeowners-for-this-repository)
+- [Maintenance](#maintenance)
+
 ---
 
 ## Overview
@@ -93,6 +122,10 @@ graph TD
     style I fill:#d4edda
     style J fill:#f8d7da
 ```
+
+---
+
+## Workflow Documentation
 
 ### Basic CI (`nixline-ci.yml`)
 

@@ -43,10 +43,10 @@ jobs:
 
       - name: Check policy compliance
         id: check
-        continue-on-error: true
         env:
           NIXLINE_PACKS: ${{ inputs.packs }}
         run: |
+          set +e  # Don't exit on error
           if [ "${{ inputs.consumption_pattern }}" = "template-based" ]; then
             nix run .#check
             CHECK_EXIT_CODE=$?
@@ -54,8 +54,9 @@ jobs:
             nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#check
             CHECK_EXIT_CODE=$?
           fi
-          echo "check_result=$CHECK_EXIT_CODE" >> $GITHUB_OUTPUT
-          exit 0
+          echo "check_result=${CHECK_EXIT_CODE}" >> $GITHUB_OUTPUT
+          echo "Check completed with exit code: ${CHECK_EXIT_CODE}"
+          exit 0  # Always exit successfully so outputs are preserved
 
       - name: Sync policies if out of date
         id: sync

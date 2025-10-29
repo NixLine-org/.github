@@ -1,0 +1,17 @@
+# CODEOWNERS - Generated from nixline-baseline
+# Edit packs/codeowners.nix in your baseline to customize
+
+# Default owners for everything
+* @NixLine-org/maintainers
+
+# Nix files
+*.nix @NixLine-org/nix-team
+
+flake.lock @NixLine-org/nix-team
+
+# CI/CD workflows
+.github/workflows/ @NixLine-org/devops
+
+# Documentation
+*.md @NixLine-org/docs
+

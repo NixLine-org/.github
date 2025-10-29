@@ -1,0 +1,127 @@
+name: Update Stable Tag (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: 'Name of the stable tag to update'
+        required: false
+        type: string
+        default: 'stable'
+      target_branch:
+        description: 'Branch to create tag from'
+        required: false
+        type: string
+        default: 'main'
+      commit_message_template:
+        description: 'Template for tag annotation message'
+        required: false
+        type: string
+        default: |
+          Automated {tag_name} tag update
+
+          Updated to commit: {commit_hash}
+          Commit message: {commit_message}
+
+          🤖 This tag was updated automatically when {target_branch} branch was updated.
+
+permissions:
+  contents: write
+
+jobs:
+  update-stable-tag:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.target_branch }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Update stable tag
+        run: |
+          TAG_NAME="${{ inputs.tag_name }}"
+          TARGET_BRANCH="${{ inputs.target_branch }}"
+          CURRENT_HEAD=$(git rev-parse HEAD)
+          COMMIT_MESSAGE=$(git log -1 --pretty=%B | head -1)
+
+          echo "Repository: ${{ github.repository }}"
+          echo "Target branch: $TARGET_BRANCH"
+          echo "Tag name: $TAG_NAME"
+          echo "Current HEAD: $CURRENT_HEAD"
+          echo "Commit message: $COMMIT_MESSAGE"
+
+          # Check if stable tag exists and get its current target
+          if git rev-parse "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
+            CURRENT_TAG_TARGET=$(git rev-parse "refs/tags/$TAG_NAME")
+            echo "Current $TAG_NAME tag points to: $CURRENT_TAG_TARGET"
+
+            if [ "$CURRENT_TAG_TARGET" = "$CURRENT_HEAD" ]; then
+              echo "✅ Tag $TAG_NAME already points to current HEAD, no update needed"
+              exit 0
+            fi
+
+            echo "🔄 Tag needs update: $CURRENT_TAG_TARGET -> $CURRENT_HEAD"
+            git tag -d "$TAG_NAME"
+            git push origin ":refs/tags/$TAG_NAME"
+            echo "Deleted existing $TAG_NAME tag"
+          else
+            echo "📝 Creating new $TAG_NAME tag"
+          fi
+
+          # Create tag annotation message from template
+          TAG_MESSAGE=$(cat << 'EOF'
+          ${{ inputs.commit_message_template }}
+          EOF
+          )
+
+          # Substitute variables in the message
+          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed "s/{tag_name}/$TAG_NAME/g")
+          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed "s/{commit_hash}/$CURRENT_HEAD/g")
+          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed "s/{commit_message}/$COMMIT_MESSAGE/g")
+          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed "s/{target_branch}/$TARGET_BRANCH/g")
+
+          # Create new stable tag at current HEAD
+          git tag -a "$TAG_NAME" -m "$TAG_MESSAGE"
+
+          # Push new stable tag
+          git push origin "$TAG_NAME"
+          echo "✅ Updated $TAG_NAME tag to $CURRENT_HEAD"
+
+      - name: Verify tag update
+        run: |
+          TAG_NAME="${{ inputs.tag_name }}"
+          sleep 5  # Wait for GitHub to process the tag
+
+          REMOTE_TAG=$(git ls-remote origin "refs/tags/$TAG_NAME" | cut -f1)
+          LOCAL_HEAD=$(git rev-parse HEAD)
+
+          echo "Remote $TAG_NAME tag points to: $REMOTE_TAG"
+          echo "Local HEAD is at: $LOCAL_HEAD"
+
+          if [ "$REMOTE_TAG" = "$LOCAL_HEAD" ]; then
+            echo "✅ Verification successful: $TAG_NAME tag correctly points to latest commit"
+          else
+            echo "❌ Verification failed: $TAG_NAME tag does not match latest commit"
+            echo "Expected: $LOCAL_HEAD"
+            echo "Actual: $REMOTE_TAG"
+            exit 1
+          fi
+
+      - name: Summary
+        run: |
+          echo "### Stable Tag Update Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tag:** ${{ inputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target Branch:** ${{ inputs.target_branch }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **New Commit:** $(git rev-parse HEAD)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit Message:** $(git log -1 --pretty=%B | head -1)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Status:** Tag successfully updated and verified" >> $GITHUB_STEP_SUMMARY

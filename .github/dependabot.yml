@@ -1,0 +1,11 @@
+version: 2
+
+updates:
+  - commit-message:
+      include: "scope"
+      prefix: "ci"
+    directory: "/"
+    package-ecosystem: "github-actions"
+    schedule:
+      interval: "weekly"
+

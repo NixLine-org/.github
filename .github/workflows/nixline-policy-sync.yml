@@ -47,10 +47,10 @@ jobs:
         env:
           NIXLINE_PACKS: ${{ inputs.packs }}
         run: |
-          if [ "${{ inputs.consumption_pattern }}" = "direct" ]; then
-            nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#check
-          else
+          if [ "${{ inputs.consumption_pattern }}" = "template-based" ]; then
             nix run .#check
+          else
+            nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#check
           fi
           echo "check_result=$?" >> $GITHUB_OUTPUT
 
@@ -61,10 +61,10 @@ jobs:
         env:
           NIXLINE_PACKS: ${{ inputs.packs }}
         run: |
-          if [ "${{ inputs.consumption_pattern }}" = "direct" ]; then
-            nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#sync
-          else
+          if [ "${{ inputs.consumption_pattern }}" = "template-based" ]; then
             nix run .#sync
+          else
+            nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#sync
           fi
 
       - name: Check for changes

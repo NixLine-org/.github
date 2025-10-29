@@ -67,6 +67,7 @@ This repository provides several reusable workflows for NixLine automation. Each
 | `nixline-dependabot-automerge.yml` | Dependabot auto-merge | Consumer repos | Dependency automation |
 | `nixline-flake-update.yml` | Flake lock updates | Template-based repos | Template pattern |
 | `nixline-policy-flake-lock-only.yml` | Policy lock updates | Template-based repos | Template pattern |
+| `update-stable-tag.yml` | Auto-update stable tags | Baseline repos | Tag automation |
 
 ### Basic CI (`nixline-ci.yml`)
 

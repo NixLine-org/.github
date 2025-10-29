@@ -67,6 +67,7 @@ This repository provides several reusable workflows for NixLine automation. Each
 | `nixline-dependabot-automerge.yml` | Dependabot auto-merge | Consumer repos | Dependency automation |
 | `nixline-flake-update.yml` | Flake lock updates | Template-based repos | Template pattern |
 | `nixline-policy-flake-lock-only.yml` | Policy lock updates | Template-based repos | Template pattern |
+| `nixline-pre-commit.yml` | Pre-commit hooks | Consumer repos | Code formatting |
 | `update-stable-tag.yml` | Auto-update stable tags | Baseline repos | Tag automation |
 
 ### Basic CI (`nixline-ci.yml`)
@@ -341,6 +342,59 @@ jobs:
   update:
     uses: YOUR-ORG/.github/.github/workflows/nixline-policy-flake-lock-only.yml@stable
 ```
+
+### Pre-commit Hooks (`nixline-pre-commit.yml`)
+
+Runs pre-commit hooks with optional auto-fixing for code formatting and linting.
+
+**Features:**
+- Runs all pre-commit hooks defined in `.pre-commit-config.yaml`
+- Optional auto-fixing with commit back to repository
+- Configurable Python and Node versions
+- Caching for faster execution
+- Support for running on all files or just changed files
+
+**Usage:**
+```yaml
+# .github/workflows/pre-commit.yml
+name: Pre-commit
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  pre-commit:
+    uses: YOUR-ORG/.github/.github/workflows/nixline-pre-commit.yml@stable
+    with:
+      auto_fix: true  # Auto-commit fixes
+      run_on_all_files: false  # Only check changed files
+      python_version: '3.11'
+      node_version: '18'
+      commit_message: 'apply pre-commit fixes'
+```
+
+**Hooks Supported:**
+- Python: black, flake8, isort, mypy, pylint
+- JavaScript/TypeScript: prettier, eslint
+- General: trailing-whitespace, end-of-file-fixer, check-yaml, check-json, check-toml
+- Any other pre-commit compatible hook
+
+**Auto-Fix Behavior:**
+When `auto_fix: true`, the workflow will:
+1. Run pre-commit checks
+2. If failures occur, attempt to apply fixes
+3. Commit and push the fixes automatically
+4. Use github-actions[bot] as the commit author
+
+**Best Practices:**
+- Use on pull requests for immediate feedback
+- Enable auto-fix for formatting issues
+- Run on all files initially, then only on changed files
+- Cache dependencies for faster runs
 
 ### Stable Tag Updates (`update-stable-tag.yml`)
 

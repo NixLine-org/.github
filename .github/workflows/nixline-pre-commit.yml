@@ -1,0 +1,130 @@
+name: NixLine Pre-commit (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      auto_fix:
+        description: 'Automatically commit fixes'
+        required: false
+        type: boolean
+        default: false
+      run_on_all_files:
+        description: 'Run on all files or just changed files'
+        required: false
+        type: boolean
+        default: false
+      python_version:
+        description: 'Python version for Python-based hooks'
+        required: false
+        type: string
+        default: '3.11'
+      node_version:
+        description: 'Node version for JavaScript-based hooks'
+        required: false
+        type: string
+        default: '18'
+      commit_message:
+        description: 'Commit message for auto-fixes'
+        required: false
+        type: string
+        default: 'apply pre-commit fixes'
+
+permissions:
+  contents: write
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Need full history for changed file detection
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-${{ runner.os }}-
+
+      - name: Install pre-commit
+        run: pip install pre-commit
+
+      - name: Install Python tools
+        run: |
+          pip install black flake8
+
+      - name: Install Node tools
+        run: |
+          npm install -g prettier eslint
+
+      - name: Run pre-commit checks
+        id: pre-commit
+        continue-on-error: ${{ inputs.auto_fix }}
+        run: |
+          if [ "${{ inputs.run_on_all_files }}" = "true" ]; then
+            pre-commit run --all-files --show-diff-on-failure
+          else
+            # Run on files changed in this PR/push
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              # For PRs, check files changed vs base branch
+              pre-commit run --from-ref origin/${{ github.base_ref }} --to-ref HEAD --show-diff-on-failure
+            else
+              # For pushes, check files changed in the commit
+              pre-commit run --from-ref HEAD^ --to-ref HEAD --show-diff-on-failure
+            fi
+          fi
+
+      - name: Check for fixes needed
+        if: inputs.auto_fix && failure()
+        id: check-fixes
+        run: |
+          # Try to apply fixes
+          if [ "${{ inputs.run_on_all_files }}" = "true" ]; then
+            pre-commit run --all-files || true
+          else
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              pre-commit run --from-ref origin/${{ github.base_ref }} --to-ref HEAD || true
+            else
+              pre-commit run --from-ref HEAD^ --to-ref HEAD || true
+            fi
+          fi
+
+          # Check if there are changes
+          if git diff --quiet; then
+            echo "no_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "no_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push fixes
+        if: inputs.auto_fix && steps.check-fixes.outputs.no_changes == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "${{ inputs.commit_message }}
+
+          Automated fixes from pre-commit hooks"
+          git push
+
+      - name: Report success
+        if: success() && !inputs.auto_fix
+        run: echo "All pre-commit checks passed"
+
+      - name: Report fixes applied
+        if: inputs.auto_fix && steps.check-fixes.outputs.no_changes == 'false'
+        run: echo "Pre-commit fixes have been applied and committed"

@@ -92,13 +92,19 @@ jobs:
         id: git-check
         if: steps.check.outputs.check_result != '0' && steps.sync.outcome == 'success'
         run: |
-          if git diff --quiet; then
+          # Check for both staged and unstaged changes, including untracked files
+          if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
           else
             echo "has_changes=true" >> $GITHUB_OUTPUT
             # Generate list of changed files for PR description
             echo "changed_files<<EOF" >> $GITHUB_OUTPUT
-            git diff --name-only >> $GITHUB_OUTPUT
+            # Include modified, staged, and untracked files
+            {
+              git diff --name-only
+              git diff --cached --name-only
+              git ls-files --others --exclude-standard
+            } | sort -u >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           fi
 

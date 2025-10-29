@@ -67,6 +67,7 @@ This repository provides several reusable workflows for NixLine automation. Each
 | `nixline-dependabot-automerge.yml` | Dependabot auto-merge | Consumer repos | Dependency automation |
 | `nixline-flake-update.yml` | Flake lock updates | Template-based repos | Template pattern |
 | `nixline-policy-flake-lock-only.yml` | Policy lock updates | Template-based repos | Template pattern |
+| `update-stable-tag.yml` | Auto-update stable tags | Baseline repos | Tag automation |
 
 ### Basic CI (`nixline-ci.yml`)
 
@@ -340,6 +341,50 @@ jobs:
   update:
     uses: YOUR-ORG/.github/.github/workflows/nixline-policy-flake-lock-only.yml@stable
 ```
+
+### Stable Tag Automation (`update-stable-tag.yml`)
+
+Automatically keeps stable tags synchronized with the latest commits on target branches.
+
+**Features:**
+- Automatically updates stable tags when branches are pushed
+- Scheduled updates to catch any missed commits
+- Configurable tag names and target branches
+- Prevents tag drift between development and release branches
+- Detailed verification and summary reporting
+
+**Usage:**
+```yaml
+# .github/workflows/update-stable-tag.yml
+name: Always Keep Stable Tag Updated
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 6 AM UTC
+  workflow_dispatch:
+
+jobs:
+  update-stable-tag:
+    uses: YOUR-ORG/.github/.github/workflows/update-stable-tag.yml@stable
+    with:
+      tag_name: stable
+      target_branch: main
+```
+
+**Key Benefits:**
+- **Eliminates tag drift**: Ensures stable tags always point to latest commits
+- **Automated governance**: No manual intervention required for tag updates
+- **Consumer reliability**: Consumer repos always get latest policies via stable ref
+- **Zero maintenance**: Set once and forget - runs automatically
+
+**When to Use:**
+- Baseline repositories that need stable tags for consumer consumption
+- Any repository where consumers reference specific tags in their workflows
+- Projects requiring reproducible builds with automatic updates
+
+**Example Integration in Baseline:**
+This workflow is essential for baseline repositories since consumer repos reference the stable tag for policy updates. Without it, consumers would use outdated policies until tags are manually updated.
 
 ---
 

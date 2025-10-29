@@ -91,13 +91,24 @@ jobs:
 
       - name: Check for changes
         id: git-check
-        if: steps.check.outputs.check_result != '0' && steps.sync.outcome == 'success'
+        if: steps.check.outputs.check_result != '0'
         run: |
+          echo "DEBUG: Check result was: ${{ steps.check.outputs.check_result }}"
+          echo "DEBUG: Sync outcome was: ${{ steps.sync.outcome }}"
+          echo "DEBUG: Git status:"
+          git status
+          echo "DEBUG: Git diff:"
+          git diff --name-only
+          echo "DEBUG: Untracked files:"
+          git ls-files --others --exclude-standard
+
           # Check for both staged and unstaged changes, including untracked files
           if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected"
           else
             echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected - will create PR"
             # Generate list of changed files for PR description
             echo "changed_files<<EOF" >> $GITHUB_OUTPUT
             # Include modified, staged, and untracked files

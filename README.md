@@ -70,6 +70,30 @@ This repository provides several reusable workflows for NixLine automation. Each
 | `nixline-pre-commit.yml` | Pre-commit hooks | Consumer repos | Code formatting |
 | `update-stable-tag.yml` | Auto-update stable tags | Baseline repos | Tag automation |
 
+### CI Workflow
+
+**Flow Diagram:**
+```mermaid
+graph TD
+    A[Push/PR Trigger] --> B[Checkout Repository]
+    B --> C[Install Nix]
+    C --> D{Consumption<br/>Pattern?}
+    D -->|Template| E[nix run .#check]
+    D -->|Direct| F[nix run github:ORG/baseline#check]
+    D -->|Config-Driven| G[nix run github:ORG/baseline#check<br/>--config .nixline.toml]
+    E --> H{Policies<br/>In Sync?}
+    F --> H
+    G --> H
+    H -->|Yes| I[✅ CI Pass]
+    H -->|No| J[❌ CI Fail]
+    J --> K[Run Policy Sync Workflow]
+
+    style D fill:#e1f5ff
+    style H fill:#fff3cd
+    style I fill:#d4edda
+    style J fill:#f8d7da
+```
+
 ### Basic CI (`nixline-ci.yml`)
 
 Provides fundamental CI validation for NixLine consumer repositories including policy compliance checks and basic testing.
@@ -90,9 +114,75 @@ jobs:
       consumption_pattern: direct  # or configuration-driven, template-based
 ```
 
+## Workflow Diagrams
+
+Visual representation of how each workflow operates:
+
+### Policy Sync Workflow Comparison
+
+**Direct Commit Pattern (`nixline-policy-sync.yml`):**
+```mermaid
+graph TD
+    A[Scheduled/Manual Trigger] --> B[Checkout Repository]
+    B --> C[Install Nix]
+    C --> D{Check Policy<br/>Compliance}
+    D -->|In Sync| E[✅ Complete]
+    D -->|Out of Sync| F[Sync Policies]
+    F --> G[Commit Changes]
+    G --> H[Push to Main]
+    H --> E
+    F -->|Sync Fails| I[Create Issue]
+    G -->|Push Fails| J[Create Issue]
+
+    style D fill:#e1f5ff
+    style E fill:#d4edda
+    style I fill:#f8d7da
+    style J fill:#f8d7da
+```
+
+**Pull Request Pattern (`nixline-policy-sync-pr.yml`):**
+```mermaid
+graph TD
+    A[Scheduled/Manual Trigger] --> B[Checkout Repository]
+    B --> C[Install Nix]
+    C --> D{Check Policy<br/>Compliance}
+    D -->|In Sync| E[✅ Complete]
+    D -->|Out of Sync| F[Sync Policies]
+    F --> G{Create PR<br/>Enabled?}
+    G -->|Yes| H[Create Pull Request]
+    G -->|No| I[Direct Commit]
+    H --> J{Auto-Approve<br/>Enabled?}
+    J -->|Yes| K[Auto-Approve Workflow]
+    J -->|No| L[Manual Review]
+    K --> M{CI Checks<br/>Pass?}
+    L --> M
+    M -->|Pass| N[Auto-Merge]
+    M -->|Fail| O[Requires Fixes]
+    N --> E
+    I --> P[Push to Main]
+    P --> E
+
+    style D fill:#e1f5ff
+    style E fill:#d4edda
+    style H fill:#fff3cd
+    style K fill:#cfe2ff
+    style N fill:#d4edda
+```
+
+**Key Differences:**
+
+| Feature | Direct Commit | Pull Request |
+|---------|---------------|--------------|
+| **Audit Trail** | Git commits only | Full PR history with reviews |
+| **Branch Protection** | Not compatible | Works seamlessly |
+| **Speed** | Instant | Requires CI completion |
+| **Auto-Approval** | N/A | Optional via workflow |
+| **Enterprise Ready** | Basic | Full compliance features |
+| **Best For** | Simple repos, fast updates | Enterprise, audit requirements |
+
 ### Policy Sync (`nixline-policy-sync.yml`)
 
-Automatically syncs policy files from the baseline repository with instant materialization.
+Automatically syncs policy files from the baseline repository with instant materialization via direct commits.
 
 **Included in:** Consumer template (`nixline-baseline/templates/consumer/.github/workflows/policy-sync.yml`)
 
@@ -224,6 +314,31 @@ jobs:
 
 **Demonstrated in:** [nixline-demo3](https://github.com/NixLine-org/nixline-demo3) showcases this pattern with pure upstream consumption and zero maintenance overhead.
 
+### Auto-Approve Workflow
+
+**Flow Diagram:**
+```mermaid
+graph TD
+    A[PR Opened/Updated] --> B{Match PR Title<br/>Pattern?}
+    B -->|No| C[Skip]
+    B -->|Yes| D{Match Actor<br/>Filter?}
+    D -->|No| C
+    D -->|Yes| E[Approve PR]
+    E --> F{Auto-Merge<br/>Enabled?}
+    F -->|No| G[Manual Merge Required]
+    F -->|Yes| H{Require<br/>Checks?}
+    H -->|No| I[Enable Auto-Merge]
+    H -->|Yes| J{All Checks<br/>Pass?}
+    J -->|No| K[Wait for Checks]
+    J -->|Yes| I
+    I --> L[✅ Auto-Merged]
+
+    style B fill:#e1f5ff
+    style D fill:#e1f5ff
+    style E fill:#cfe2ff
+    style L fill:#d4edda
+```
+
 ### Auto-Approve (`nixline-auto-approve.yml`)
 
 Reusable workflow for automatically approving and merging PRs that meet specified criteria.
@@ -265,6 +380,30 @@ jobs:
 - Configure branch protection rules as additional safeguards
 - Require status checks to pass before auto-merge
 - Use specific PR title patterns to limit scope
+
+### Dependabot Auto-Merge Workflow
+
+**Flow Diagram:**
+```mermaid
+graph TD
+    A[Dependabot PR] --> B{Is Actor<br/>dependabot bot?}
+    B -->|No| C[Skip]
+    B -->|Yes| D{Update Type?}
+    D -->|Patch 1.0.0→1.0.1| E[Auto-Approve]
+    D -->|Minor 1.0.0→1.1.0| E
+    D -->|Major 1.0.0→2.0.0| F[Require Manual Review]
+    E --> G{CI Checks<br/>Pass?}
+    G -->|No| H[Wait/Fix]
+    G -->|Yes| I[Enable Auto-Merge]
+    I --> J[✅ Merged]
+    F --> K[Manual Decision]
+
+    style B fill:#e1f5ff
+    style D fill:#fff3cd
+    style E fill:#cfe2ff
+    style J fill:#d4edda
+    style F fill:#f8d7da
+```
 
 ### Dependabot Auto-Merge (`nixline-dependabot-automerge.yml`)
 
@@ -343,6 +482,33 @@ jobs:
     uses: YOUR-ORG/.github/.github/workflows/nixline-policy-flake-lock-only.yml@stable
 ```
 
+### Pre-commit Hooks Workflow
+
+**Flow Diagram:**
+```mermaid
+graph TD
+    A[PR/Push Trigger] --> B[Checkout Repository]
+    B --> C[Setup Python & Node]
+    C --> D[Install pre-commit]
+    D --> E[Cache pre-commit envs]
+    E --> F{Run Pre-commit<br/>Checks}
+    F -->|All Pass| G[✅ Success]
+    F -->|Failures| H{Auto-Fix<br/>Enabled?}
+    H -->|No| I[❌ Fail Build]
+    H -->|Yes| J[Apply Fixes]
+    J --> K{Has Changes?}
+    K -->|No| L[✅ No Fixes Needed]
+    K -->|Yes| M[Commit Fixes]
+    M --> N[Push Changes]
+    N --> G
+
+    style F fill:#e1f5ff
+    style G fill:#d4edda
+    style I fill:#f8d7da
+    style J fill:#fff3cd
+    style M fill:#cfe2ff
+```
+
 ### Pre-commit Hooks (`nixline-pre-commit.yml`)
 
 Runs pre-commit hooks with optional auto-fixing for code formatting and linting.
@@ -395,6 +561,29 @@ When `auto_fix: true`, the workflow will:
 - Enable auto-fix for formatting issues
 - Run on all files initially, then only on changed files
 - Cache dependencies for faster runs
+
+### Stable Tag Update Workflow
+
+**Flow Diagram:**
+```mermaid
+graph TD
+    A[Push to Main/Schedule] --> B[Checkout Repository]
+    B --> C[Configure Git]
+    C --> D[Delete Local Stable Tag]
+    D --> E[Delete Remote Stable Tag]
+    E --> F[Create New Stable Tag]
+    F --> G[Push New Stable Tag]
+    G --> H[Verify Tag Points to HEAD]
+    H --> I{Verification<br/>Passed?}
+    I -->|Yes| J[✅ Tag Updated]
+    I -->|No| K[❌ Error]
+
+    style H fill:#e1f5ff
+    style J fill:#d4edda
+    style K fill:#f8d7da
+```
+
+**Important:** This workflow runs automatically on every push to main, ensuring consumer repos always reference the latest stable code.
 
 ### Stable Tag Updates (`update-stable-tag.yml`)
 

@@ -25,6 +25,7 @@ This repository contains reusable GitHub Actions workflows for the NixLine organ
   - [Policy Lock Updates](#policy-lock-updates-nixline-policy-flake-lock-onlyyml)
   - [Pre-commit Hooks](#pre-commit-hooks-nixline-pre-commityml)
   - [Stable Tag Updates](#stable-tag-updates-update-stable-tagyml)
+  - [Flake Lock Updates](#flake-lock-updates-nixline-flake-lock-updateyml)
   - [Governance Migration](#governance-migration-migrate-governanceyml)
   - [Test Governance Migration](#test-governance-migration-test-governance-migrationyml)
 - [Forking for Your Organization](#forking-for-your-organization)
@@ -177,6 +178,7 @@ This repository provides several reusable workflows for NixLine automation. Each
 | `nixline-policy-flake-lock-only.yml` | Policy lock updates | Template-based repos | Template pattern |
 | `nixline-pre-commit.yml` | Pre-commit hooks | Consumer repos | Code formatting |
 | `update-stable-tag.yml` | Auto-update stable tags | Baseline repos | Tag automation |
+| `nixline-flake-lock-update.yml` | Update flake.lock files | Any repo with flakes | Dependency management |
 | `migrate-governance.yml` | Migrate governance repositories | Organizations | Governance migration |
 | `test-governance-migration.yml` | Test migration compatibility | Governance repos | Migration testing |
 
@@ -737,6 +739,62 @@ jobs:
 When using this workflow, always enable branch protection on your main branch. The stable tag automatically updates to point to the latest main commit, so any direct push to main would immediately be tagged as "stable" and potentially deployed to production or consumed by other repositories.
 
 Configure branch protection to require pull request reviews before merging, dismiss stale reviews when new commits are pushed, require status checks to pass, and include administrators in restrictions. This ensures all changes go through proper review before being automatically tagged as stable.
+
+---
+
+### Flake Lock Updates (`nixline-flake-lock-update.yml`)
+
+Automatically updates flake.lock files when flake.nix changes or on demand.
+
+**Features:**
+- Triggered automatically when flake.nix changes
+- Manual trigger support via workflow_dispatch
+- Validates updated flake before committing
+- Configurable flake directory location
+- Detailed change reporting in workflow summary
+
+**Usage:**
+
+```yaml
+# .github/workflows/update-consumer-template-flake-lock.yml
+name: Update Consumer Template Flake Lock
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'templates/consumer/flake.nix'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-flake-lock:
+    uses: YOUR-ORG/.github/.github/workflows/nixline-flake-lock-update.yml@stable
+    with:
+      flake-directory: 'templates/consumer'
+      commit-message: 'Update consumer template flake.lock'
+      validate-after-update: true
+```
+
+**How It Works:**
+1. Detects changes to flake.nix via paths filter
+2. Runs `nix flake update` in specified directory
+3. Validates updated flake with `nix flake check`
+4. Commits and pushes updated flake.lock
+5. Only commits if changes are detected
+
+**Inputs:**
+- `flake-directory`: Directory containing flake.nix (default: '.')
+- `commit-message`: Custom commit message (default: 'Update flake.lock')
+- `validate-after-update`: Run validation after update (default: true)
+
+**Use Cases:**
+- Baseline repos with consumer templates
+- Any repository with flake.nix that needs automatic dependency updates
+- Multi-flake repositories with templates in subdirectories
 
 ---
 

@@ -1,0 +1,150 @@
+name: NixLine Flake Lock Update (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      flake-directory:
+        description: 'Directory containing the flake.nix to update (relative to repo root)'
+        required: false
+        type: string
+        default: '.'
+      commit-message:
+        description: 'Custom commit message for flake.lock updates'
+        required: false
+        type: string
+        default: 'Update flake.lock'
+      validate-after-update:
+        description: 'Run nix flake check after updating'
+        required: false
+        type: boolean
+        default: true
+
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write    # To commit flake.lock updates
+
+jobs:
+  update-flake-lock:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          token: ${{ github.token }}
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v9
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v2
+
+      - name: Update flake.lock
+        run: |
+          FLAKE_DIR="${{ inputs.flake-directory }}"
+          cd "$FLAKE_DIR"
+
+          echo "## Flake Lock Update" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Directory:** $FLAKE_DIR" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check if flake.nix exists
+          if [[ ! -f "flake.nix" ]]; then
+            echo "**ERROR:** No flake.nix found in $FLAKE_DIR" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          # Check if flake.lock exists
+          if [[ ! -f "flake.lock" ]]; then
+            echo "**INFO:** No existing flake.lock found - will create new one" >> $GITHUB_STEP_SUMMARY
+          else
+            # Store original lock file for comparison
+            cp flake.lock flake.lock.backup
+          fi
+
+          # Update flake.lock
+          echo "Updating flake inputs..." >> $GITHUB_STEP_SUMMARY
+          nix flake update 2>&1 | tee update.log
+
+          # Check if anything changed
+          if [[ -f "flake.lock.backup" ]] && diff flake.lock.backup flake.lock >/dev/null 2>&1; then
+            echo "**Result:** No updates available - flake.lock is already current" >> $GITHUB_STEP_SUMMARY
+            echo "flake-updated=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "**Result:** Updates found and applied" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "flake-updated=true" >> $GITHUB_OUTPUT
+
+          # Show what changed
+          if [[ -f "flake.lock.backup" ]]; then
+            echo "**Changes:**" >> $GITHUB_STEP_SUMMARY
+            echo '```diff' >> $GITHUB_STEP_SUMMARY
+            diff flake.lock.backup flake.lock | head -20 || true >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**New flake.lock created**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Clean up
+          rm -f flake.lock.backup update.log
+
+      - name: Validate updated flake
+        if: inputs.validate-after-update
+        run: |
+          FLAKE_DIR="${{ inputs.flake-directory }}"
+          cd "$FLAKE_DIR"
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Flake Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Test the updated flake
+          if nix flake check 2>&1 | tee validation.log; then
+            echo "**PASSED** - Updated flake passes validation" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**FAILED** - Updated flake has validation issues" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Validation Output:**" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -20 validation.log >> $GITHUB_STEP_SUMMARY || echo "Failed to read validation log" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Commit flake.lock updates
+        run: |
+          FLAKE_DIR="${{ inputs.flake-directory }}"
+          cd "$FLAKE_DIR"
+
+          # Configure git
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          # Check if there are changes to commit
+          if git diff --quiet flake.lock; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          # Commit the changes
+          git add flake.lock
+
+          COMMIT_MSG="${{ inputs.commit-message }}"
+          if [[ "$FLAKE_DIR" != "." ]]; then
+            COMMIT_MSG="$COMMIT_MSG in $FLAKE_DIR"
+          fi
+
+          git commit -m "$COMMIT_MSG
+
+          Automated update of flake inputs.
+
+          Updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+
+          # Push changes
+          git push origin ${{ github.ref_name }}
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** Flake lock updated and committed successfully" >> $GITHUB_STEP_SUMMARY

@@ -56,6 +56,8 @@ jobs:
       - name: Checkout governance repository
         run: |
           governance_repo="${{ inputs.governance-repo }}"
+          # Trim whitespace
+          governance_repo=$(echo "$governance_repo" | xargs)
           if [ -z "$governance_repo" ]; then
             governance_repo="https://github.com/example-org/governance"
           fi
@@ -160,6 +162,13 @@ jobs:
           security_email="${{ inputs.security-email }}"
           baseline_ref="${{ inputs.baseline-ref }}"
 
+          # Trim whitespace from all inputs
+          governance_repo=$(echo "$governance_repo" | xargs)
+          org_name=$(echo "$org_name" | xargs)
+          org_email=$(echo "$org_email" | xargs)
+          security_email=$(echo "$security_email" | xargs)
+          baseline_ref=$(echo "$baseline_ref" | xargs)
+
           # Apply fallbacks using bash
           if [ -z "$governance_repo" ]; then
             governance_repo="https://github.com/example-org/governance"
@@ -260,6 +269,12 @@ jobs:
           org_email="${{ inputs.organization-email }}"
           security_email="${{ inputs.security-email }}"
           baseline_ref="${{ inputs.baseline-ref }}"
+
+          # Trim whitespace from all inputs
+          org_name=$(echo "$org_name" | xargs)
+          org_email=$(echo "$org_email" | xargs)
+          security_email=$(echo "$security_email" | xargs)
+          baseline_ref=$(echo "$baseline_ref" | xargs)
 
           # Apply fallbacks using bash
           if [ -z "$org_name" ]; then

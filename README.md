@@ -24,6 +24,8 @@ This repository contains reusable GitHub Actions workflows for the NixLine organ
   - [Policy Lock Updates](#policy-lock-updates-nixline-policy-flake-lock-onlyyml)
   - [Pre-commit Hooks](#pre-commit-hooks-nixline-pre-commityml)
   - [Stable Tag Updates](#stable-tag-updates-update-stable-tagyml)
+  - [Governance Migration](#governance-migration-migrate-governanceyml)
+  - [Test Governance Migration](#test-governance-migration-test-governance-migrationyml)
 - [Forking for Your Organization](#forking-for-your-organization)
 - [Workflow Best Practices](#workflow-best-practices)
 - [Consumer Workflow Setup](#consumer-workflow-setup)
@@ -98,6 +100,8 @@ This repository provides several reusable workflows for NixLine automation. Each
 | `nixline-policy-flake-lock-only.yml` | Policy lock updates | Template-based repos | Template pattern |
 | `nixline-pre-commit.yml` | Pre-commit hooks | Consumer repos | Code formatting |
 | `update-stable-tag.yml` | Auto-update stable tags | Baseline repos | Tag automation |
+| `migrate-governance.yml` | Migrate governance repositories | Organizations | Governance migration |
+| `test-governance-migration.yml` | Test migration compatibility | Governance repos | Migration testing |
 
 ### CI Workflow
 
@@ -656,6 +660,107 @@ jobs:
 When using this workflow, always enable branch protection on your main branch. The stable tag automatically updates to point to the latest main commit, so any direct push to main would immediately be tagged as "stable" and potentially deployed to production or consumed by other repositories.
 
 Configure branch protection to require pull request reviews before merging, dismiss stale reviews when new commits are pushed, require status checks to pass, and include administrators in restrictions. This ensures all changes go through proper review before being automatically tagged as stable.
+
+---
+
+### Governance Migration (`migrate-governance.yml`)
+
+This reusable workflow automates the migration of existing governance repositories to NixLine baseline format using deterministic repository fetching.
+
+**Use Case:** Organizations wanting to convert their existing governance files (LICENSE, SECURITY.md, CODEOWNERS, etc.) into a complete NixLine baseline.
+
+**Example Usage:**
+```yaml
+# .github/workflows/create-nixline-baseline.yml
+name: Create NixLine Baseline from Governance
+
+on:
+  workflow_dispatch:
+    inputs:
+      organization-name:
+        description: 'Organization name'
+        required: true
+        type: string
+      organization-email:
+        description: 'Organization contact email'
+        required: true
+        type: string
+
+jobs:
+  migrate:
+    uses: NixLine-org/.github/.github/workflows/migrate-governance.yml@stable
+    with:
+      governance-repo: ${{ github.server_url }}/${{ github.repository }}
+      organization-name: ${{ inputs.organization-name }}
+      organization-email: ${{ inputs.organization-email }}
+      output-mode: 'artifact'
+```
+
+**Key Features:**
+- Uses `builtins.fetchGit` for deterministic repository fetching
+- Automatically detects project languages and existing governance files
+- Generates complete NixLine baseline with organization-specific configuration
+- Supports GitHub URLs, local paths, and private repositories
+- Creates downloadable artifacts or commits directly to repository
+- Provides comprehensive migration reports with next-step instructions
+
+**Output Modes:**
+- `artifact`: Creates downloadable ZIP with generated baseline
+- `commit`: Commits generated baseline directly to target branch
+- `pr`: Creates pull request with generated baseline (manual PR creation required)
+
+### Test Governance Migration (`test-governance-migration.yml`)
+
+This reusable workflow tests whether a governance repository is compatible with NixLine migration before performing actual migration.
+
+**Use Case:** Governance repositories wanting to validate their migration readiness and compatibility with NixLine.
+
+**Example Usage:**
+```yaml
+# .github/workflows/test-nixline-migration.yml
+name: Test NixLine Migration Compatibility
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test-migration:
+    uses: NixLine-org/.github/.github/workflows/test-governance-migration.yml@stable
+    with:
+      organization-name: "Test Organization"
+      organization-email: "admin@example.com"
+      dry-run-only: true
+```
+
+**What It Tests:**
+- Repository structure analysis (languages, governance files, configuration files)
+- Migration compatibility with current NixLine baseline
+- Generated baseline validation (when dry-run-only is false)
+- Edge case handling (empty repositories, missing files, permission issues)
+
+**Output:**
+- Comprehensive migration readiness assessment
+- Detailed analysis of detected capabilities
+- Step-by-step instructions for full migration
+- Testing recommendations for different scenarios
+
+**Advanced Testing:**
+```yaml
+# Test full migration with artifact generation
+jobs:
+  full-test:
+    uses: NixLine-org/.github/.github/workflows/test-governance-migration.yml@stable
+    with:
+      organization-name: "Full Test Organization"
+      organization-email: "test@example.com"
+      security-email: "security@example.com"
+      dry-run-only: false  # Generates actual baseline
+      baseline-ref: "github:yourorg/custom-nixline-baseline"
+```
 
 ---
 

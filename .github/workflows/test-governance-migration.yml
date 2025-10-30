@@ -1,0 +1,344 @@
+# Reusable workflow for testing governance repository migration compatibility
+# This workflow can be called by governance repositories to test their migration readiness
+
+name: Test Governance Migration
+
+on:
+  workflow_call:
+    inputs:
+      organization-name:
+        description: 'Organization name for testing'
+        required: false
+        type: string
+        default: 'Test Organization'
+      organization-email:
+        description: 'Organization contact email for testing'
+        required: false
+        type: string
+        default: 'admin@example.com'
+      security-email:
+        description: 'Security contact email for testing'
+        required: false
+        type: string
+      dry-run-only:
+        description: 'Only run dry-run analysis (no actual migration)'
+        required: false
+        type: boolean
+        default: true
+      baseline-ref:
+        description: 'NixLine baseline reference to test against'
+        required: false
+        type: string
+        default: 'github:NixLine-org/nixline-baseline'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  analyze-governance:
+    name: Analyze Governance Repository
+    runs-on: ubuntu-latest
+
+    outputs:
+      languages-count: ${{ steps.analyze.outputs.languages-count }}
+      governance-count: ${{ steps.analyze.outputs.governance-count }}
+      config-count: ${{ steps.analyze.outputs.config-count }}
+      migration-compatible: ${{ steps.migrate-test.outputs.success }}
+
+    steps:
+      - name: Checkout governance repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v9
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v2
+
+      - name: Analyze repository structure
+        id: analyze
+        run: |
+          echo "## Governance Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check for project languages
+          languages=()
+          if [[ -f "package.json" ]]; then
+            languages+=("JavaScript/TypeScript")
+            echo "[✓] JavaScript/TypeScript project detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ -f "pyproject.toml" || -f "setup.py" || -f "requirements.txt" ]]; then
+            languages+=("Python")
+            echo "[✓] Python project detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ -f "Cargo.toml" ]]; then
+            languages+=("Rust")
+            echo "[✓] Rust project detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ -f "go.mod" ]]; then
+            languages+=("Go")
+            echo "[✓] Go project detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check for governance files
+          governance_files=()
+          if [[ -f "LICENSE" ]]; then
+            governance_files+=("LICENSE")
+            echo "[✓] License file found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ -f ".github/CODEOWNERS" ]]; then
+            governance_files+=("CODEOWNERS")
+            echo "[✓] CODEOWNERS file found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ -f "SECURITY.md" ]]; then
+            governance_files+=("SECURITY.md")
+            echo "[✓] Security policy found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ -f ".github/dependabot.yml" ]]; then
+            governance_files+=("dependabot.yml")
+            echo "[✓] Dependabot configuration found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ -f ".editorconfig" ]]; then
+            governance_files+=(".editorconfig")
+            echo "[✓] EditorConfig found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check for additional config files
+          config_files=()
+          for config in .prettierrc .eslintrc.json .bandit.yml .flake8 .yamllint .pre-commit-config.yaml; do
+            if [[ -f "$config" ]]; then
+              config_files+=("$config")
+              echo "[✓] Configuration file: $config" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Summary:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Languages: ${#languages[@]} detected" >> $GITHUB_STEP_SUMMARY
+          echo "- Governance files: ${#governance_files[@]} found" >> $GITHUB_STEP_SUMMARY
+          echo "- Config files: ${#config_files[@]} found" >> $GITHUB_STEP_SUMMARY
+
+          # Set outputs
+          echo "languages-count=${#languages[@]}" >> $GITHUB_OUTPUT
+          echo "governance-count=${#governance_files[@]}" >> $GITHUB_OUTPUT
+          echo "config-count=${#config_files[@]}" >> $GITHUB_OUTPUT
+
+      - name: Test migration compatibility
+        id: migrate-test
+        run: |
+          set -euo pipefail
+
+          echo "## Migration Compatibility Test" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Prepare migration parameters
+          org_name="${{ inputs.organization-name }}"
+          org_email="${{ inputs.organization-email }}"
+          security_email="${{ inputs.security-email || inputs.organization-email }}"
+
+          echo "Testing governance migration with:"
+          echo "  Organization: $org_name"
+          echo "  Repository: ${{ github.repository }}"
+          echo "  Baseline: ${{ inputs.baseline-ref }}"
+          echo "  Dry run only: ${{ inputs.dry-run-only }}"
+
+          # Run migrate-governance in dry-run mode
+          migration_args=(
+            "--governance-repo" "."
+            "--org-name" "$org_name"
+            "--org-email" "$org_email"
+            "--output-dir" "./test-baseline"
+            "--dry-run"
+            "--verbose"
+          )
+
+          if [[ -n "$security_email" && "$security_email" != "$org_email" ]]; then
+            migration_args+=("--security-email" "$security_email")
+          fi
+
+          if nix run "${{ inputs.baseline-ref }}#migrate-governance" -- "${migration_args[@]}"; then
+            echo "[✓] Migration compatibility test PASSED" >> $GITHUB_STEP_SUMMARY
+            echo "success=true" >> $GITHUB_OUTPUT
+          else
+            echo "[✗] Migration compatibility test FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "success=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Test actual migration (if enabled)
+        if: ${{ !inputs.dry-run-only }}
+        run: |
+          set -euo pipefail
+
+          echo "## Full Migration Test" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Run actual migration
+          nix run "${{ inputs.baseline-ref }}#migrate-governance" -- \
+            --governance-repo . \
+            --org-name "${{ inputs.organization-name }}" \
+            --org-email "${{ inputs.organization-email }}" \
+            --security-email "${{ inputs.security-email || inputs.organization-email }}" \
+            --output-dir "./generated-baseline" \
+            --verbose
+
+          echo "[✓] Generated baseline successfully" >> $GITHUB_STEP_SUMMARY
+
+      - name: Validate generated baseline
+        if: ${{ !inputs.dry-run-only }}
+        run: |
+          cd generated-baseline
+
+          echo "## Generated Baseline Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check essential files
+          essential_files=("flake.nix" ".nixline.toml" "lib" "apps")
+          for file in "${essential_files[@]}"; do
+            if [[ -e "$file" ]]; then
+              echo "[✓] Essential file present: $file" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "[✗] Missing essential file: $file" >> $GITHUB_STEP_SUMMARY
+              exit 1
+            fi
+          done
+
+          # Check flake syntax
+          if nix flake check --no-build 2>/dev/null; then
+            echo "[✓] Generated flake passes syntax check" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "[!] Generated flake has syntax warnings" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Count generated packs
+          if [[ -d "packs" ]]; then
+            pack_count=$(find packs -name "*.nix" -type f 2>/dev/null | wc -l)
+            echo "[✓] Generated $pack_count pack files" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "[i] No pack files generated" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload generated baseline
+        if: ${{ !inputs.dry-run-only }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nixline-baseline-${{ github.repository_owner }}-${{ github.run_number }}
+          path: |
+            ./generated-baseline/
+          retention-days: 7
+
+  generate-report:
+    name: Generate Migration Report
+    runs-on: ubuntu-latest
+    needs: analyze-governance
+    if: always()
+
+    steps:
+      - name: Create migration readiness report
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+
+          ## Migration Readiness Assessment
+
+          This repository has been analyzed for NixLine governance migration compatibility.
+
+          ### Repository Analysis
+          - **Languages**: ${{ needs.analyze-governance.outputs.languages-count }} programming languages detected
+          - **Governance Files**: ${{ needs.analyze-governance.outputs.governance-count }} standard governance files found
+          - **Configuration Files**: ${{ needs.analyze-governance.outputs.config-count }} additional config files found
+
+          ### Migration Compatibility
+          - **Compatibility Test**: ${{ needs.analyze-governance.outputs.migration-compatible == 'true' && '[✓] PASSED' || '[✗] FAILED' }}
+          - **Ready for Migration**: ${{ needs.analyze-governance.outputs.migration-compatible == 'true' && 'YES' || 'NO - Check errors above' }}
+
+          ### Next Steps
+
+          ${{ needs.analyze-governance.outputs.migration-compatible == 'true' &&
+          '#### Your repository is ready for migration!
+
+          **Run Full Migration:**
+          ```bash
+          nix run github:NixLine-org/nixline-baseline#migrate-governance -- \
+            --governance-repo https://github.com/${{ github.repository }} \
+            --org-name "Your Organization Name" \
+            --org-email "admin@yourorg.com" \
+            --output-dir ./nixline-baseline
+          ```
+
+          **Create Your Baseline Repository:**
+          ```bash
+          gh repo create yourorg/nixline-baseline --public
+          cd nixline-baseline
+          git init && git add . && git commit -m "Initial NixLine baseline from governance migration"
+          git remote add origin https://github.com/yourorg/nixline-baseline
+          git push -u origin main
+          git tag stable && git push origin stable
+          ```
+
+          **Test with Consumer Repository:**
+          ```bash
+          mkdir test-consumer && cd test-consumer
+          echo "[packs]
+          enabled = [\"license\", \"codeowners\"]" > .nixline.toml
+          nix run github:yourorg/nixline-baseline#sync
+          ```' ||
+
+          '#### Migration compatibility issues detected
+
+          Please review the error messages above and address the following:
+          - Ensure your repository contains governance files (LICENSE, SECURITY.md, etc.)
+          - Verify that configuration files are valid and readable
+          - Check that required organizational information can be provided
+
+          **Test Again:**
+          After making fixes, re-run this workflow to test compatibility.' }}
+
+          ### Resources
+          - [NixLine Documentation](https://github.com/NixLine-org/nixline-baseline#governance-migration)
+          - [Migration Guide](https://github.com/NixLine-org/nixline-baseline#governance-migration)
+          - [Reusable Workflows](https://github.com/NixLine-org/.github)
+          EOF
+
+      - name: Check for test edge cases
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+
+          ### Testing Edge Cases
+
+          To thoroughly test your governance repository:
+
+          1. **Test with minimal configuration:**
+          ```yaml
+          uses: NixLine-org/.github/.github/workflows/test-governance-migration.yml@stable
+          with:
+            organization-name: "Minimal Test"
+            organization-email: "test@example.com"
+            dry-run-only: true
+          ```
+
+          2. **Test full migration (generates files):**
+          ```yaml
+          uses: NixLine-org/.github/.github/workflows/test-governance-migration.yml@stable
+          with:
+            organization-name: "Your Organization"
+            organization-email: "admin@yourorg.com"
+            dry-run-only: false
+          ```
+
+          3. **Test with custom baseline:**
+          ```yaml
+          uses: NixLine-org/.github/.github/workflows/test-governance-migration.yml@stable
+          with:
+            organization-name: "Custom Test"
+            organization-email: "test@example.com"
+            baseline-ref: "github:yourorg/custom-nixline-baseline"
+          ```
+          EOF

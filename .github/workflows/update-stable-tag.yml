@@ -122,11 +122,11 @@ jobs:
           # Create tag annotation message from template
           TAG_MESSAGE="${{ inputs.commit_message_template }}"
 
-          # Substitute variables in the message
-          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed "s/{tag_name}/$TAG_NAME/g")
-          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed "s/{commit_hash}/$CURRENT_HEAD/g")
-          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed "s/{commit_message}/$COMMIT_MESSAGE/g")
-          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed "s/{target_branch}/$TARGET_BRANCH/g")
+          # Substitute variables in the message (using | delimiter to handle slashes in values)
+          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed "s|{tag_name}|$TAG_NAME|g")
+          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed "s|{commit_hash}|$CURRENT_HEAD|g")
+          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed "s|{commit_message}|$COMMIT_MESSAGE|g")
+          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed "s|{target_branch}|$TARGET_BRANCH|g")
 
           # Create new stable tag at current HEAD
           git tag -a "$TAG_NAME" -m "$TAG_MESSAGE"

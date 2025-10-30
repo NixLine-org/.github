@@ -36,9 +36,10 @@ on:
         type: string
         default: 'github:NixLine-org/nixline-baseline'
 
-permissions:
-  contents: read
-  actions: read
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: read    # To clone repositories
+#   actions: read     # To access workflow artifacts
 
 jobs:
   analyze-governance:

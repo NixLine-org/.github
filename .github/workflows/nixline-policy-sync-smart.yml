@@ -1,0 +1,376 @@
+name: NixLine Policy Sync Smart (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      baseline_ref:
+        description: 'Baseline reference (branch/tag) to sync from'
+        required: false
+        type: string
+        default: 'main'
+      consumption_pattern:
+        description: 'Consumption pattern: template-based, direct, or configuration-driven'
+        required: false
+        type: string
+        default: 'direct'
+      baseline_repo:
+        description: 'Baseline repository (for direct consumption pattern)'
+        required: false
+        type: string
+        default: 'NixLine-org/nixline-baseline'
+      config_file:
+        description: 'Configuration file path (for configuration-driven pattern)'
+        required: false
+        type: string
+        default: '.nixline.toml'
+      prefer_pr:
+        description: 'Always create PR even if direct push would work'
+        required: false
+        type: boolean
+        default: false
+      auto_merge:
+        description: 'Enable auto-merge on created PRs'
+        required: false
+        type: boolean
+        default: true
+      stagger_minutes:
+        description: 'Random delay (0-N minutes) to prevent API rate limits'
+        required: false
+        type: number
+        default: 5
+
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write         # To commit policy changes or create PRs
+#   pull-requests: write    # To create and manage PRs
+#   issues: write           # To create issues on sync failures
+
+jobs:
+  policy-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Stagger execution to prevent rate limits
+        if: inputs.stagger_minutes > 0
+        run: |
+          # Random delay to prevent 500 repos hitting API simultaneously
+          DELAY=$((RANDOM % (${{ inputs.stagger_minutes }} * 60)))
+          echo "Delaying for ${DELAY} seconds to stagger execution..."
+          sleep $DELAY
+
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Full history for better conflict resolution
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Check current policy compliance
+        id: check
+        continue-on-error: true
+        run: |
+          echo "## Policy Check" >> $GITHUB_STEP_SUMMARY
+
+          case "${{ inputs.consumption_pattern }}" in
+            template-based)
+              nix run .#check
+              ;;
+            configuration-driven)
+              if [[ -f "${{ inputs.config_file }}" ]]; then
+                nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#check -- --config "${{ inputs.config_file }}"
+              else
+                nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#check
+              fi
+              ;;
+            direct|*)
+              nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#check
+              ;;
+          esac
+
+          CHECK_RESULT=$?
+          echo "check_result=$CHECK_RESULT" >> $GITHUB_OUTPUT
+
+          if [ $CHECK_RESULT -eq 0 ]; then
+            echo "✅ Policies are in sync" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Policies need updating" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Exit if already in sync
+        if: steps.check.outputs.check_result == '0'
+        run: |
+          echo "Policies are already in sync with baseline"
+          exit 0
+
+      - name: Pull latest changes with rebase
+        id: pull
+        continue-on-error: true
+        run: |
+          echo "## Syncing with upstream" >> $GITHUB_STEP_SUMMARY
+
+          git fetch origin main
+          git pull --rebase origin main
+
+          if [ $? -ne 0 ]; then
+            echo "has_conflicts=true" >> $GITHUB_OUTPUT
+            echo "⚠️ Merge conflicts detected" >> $GITHUB_STEP_SUMMARY
+            git rebase --abort
+          else
+            echo "has_conflicts=false" >> $GITHUB_OUTPUT
+            echo "✅ Successfully synced with upstream" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Materialize policy files
+        id: sync
+        run: |
+          echo "## Policy Materialization" >> $GITHUB_STEP_SUMMARY
+
+          case "${{ inputs.consumption_pattern }}" in
+            template-based)
+              nix run .#sync
+              ;;
+            configuration-driven)
+              if [[ -f "${{ inputs.config_file }}" ]]; then
+                nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#sync -- --config "${{ inputs.config_file }}"
+              else
+                nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#sync
+              fi
+              ;;
+            direct|*)
+              nix run "github:${{ inputs.baseline_repo }}?ref=${{ inputs.baseline_ref }}"#sync
+              ;;
+          esac
+
+          echo "✅ Policy files materialized" >> $GITHUB_STEP_SUMMARY
+
+      - name: Validate materialized files
+        id: validate
+        run: |
+          echo "## Content Validation" >> $GITHUB_STEP_SUMMARY
+          ERRORS=0
+
+          # Check for required files
+          for file in LICENSE SECURITY.md .editorconfig; do
+            if [[ -f "$file" ]]; then
+              echo "✅ $file present" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ $file missing (may not be in enabled packs)" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+          # Validate LICENSE has copyright holder
+          if [[ -f "LICENSE" ]] && grep -q "CHANGEME\|TODO" LICENSE; then
+            echo "❌ LICENSE contains placeholder text" >> $GITHUB_STEP_SUMMARY
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # Validate SECURITY.md has contact email
+          if [[ -f "SECURITY.md" ]] && grep -q "security@example.com\|CHANGEME" SECURITY.md; then
+            echo "❌ SECURITY.md contains placeholder email" >> $GITHUB_STEP_SUMMARY
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # Validate CODEOWNERS if present
+          if [[ -f ".github/CODEOWNERS" ]] && grep -q "@CHANGEME\|@TODO" .github/CODEOWNERS; then
+            echo "❌ CODEOWNERS contains placeholder teams" >> $GITHUB_STEP_SUMMARY
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          echo "validation_errors=$ERRORS" >> $GITHUB_OUTPUT
+
+          if [ $ERRORS -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Found $ERRORS validation errors - review configuration" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected after sync"
+            exit 0
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+
+            # Generate change summary
+            echo "changed_files<<EOF" >> $GITHUB_OUTPUT
+            git diff --name-only >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+
+            echo "## Changes Detected" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            git diff --stat >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Stage all changes
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          git add -A
+
+      - name: Try direct push (if not prefer_pr)
+        id: direct_push
+        if: |
+          steps.changes.outputs.has_changes == 'true' &&
+          steps.pull.outputs.has_conflicts != 'true' &&
+          !inputs.prefer_pr
+        continue-on-error: true
+        run: |
+          echo "## Direct Push Attempt" >> $GITHUB_STEP_SUMMARY
+
+          git commit -m "Policy sync from baseline@${{ inputs.baseline_ref }}
+
+          Automated policy sync from ${{ inputs.baseline_repo }}@${{ inputs.baseline_ref }}
+          Consumption pattern: ${{ inputs.consumption_pattern }}
+
+          Changed files:
+          ${{ steps.changes.outputs.changed_files }}"
+
+          git push origin main
+
+          if [ $? -eq 0 ]; then
+            echo "push_success=true" >> $GITHUB_OUTPUT
+            echo "✅ Direct push successful" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "push_success=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Direct push failed (likely branch protection) - will create PR" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Create Pull Request
+        id: create_pr
+        if: |
+          steps.changes.outputs.has_changes == 'true' &&
+          (steps.direct_push.outputs.push_success != 'true' || inputs.prefer_pr || steps.pull.outputs.has_conflicts == 'true')
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            Policy sync from baseline@${{ inputs.baseline_ref }}
+
+            Automated policy sync from ${{ inputs.baseline_repo }}@${{ inputs.baseline_ref }}
+            Consumption pattern: ${{ inputs.consumption_pattern }}
+
+            Changed files:
+            ${{ steps.changes.outputs.changed_files }}
+          title: "Policy Sync: Update from baseline@${{ inputs.baseline_ref }}"
+          body: |
+            ## 🔄 Automated Policy Sync
+
+            This PR contains automated policy updates from the NixLine baseline repository.
+
+            ### Configuration
+            - **Baseline**: `${{ inputs.baseline_repo }}@${{ inputs.baseline_ref }}`
+            - **Pattern**: `${{ inputs.consumption_pattern }}`
+            ${{ inputs.config_file && format('- **Config**: `{0}`', inputs.config_file) || '' }}
+
+            ### Validation Results
+            - Content validation errors: **${{ steps.validate.outputs.validation_errors }}**
+            ${{ steps.pull.outputs.has_conflicts == 'true' && '- ⚠️ **Manual merge conflict resolution required**' || '- ✅ No merge conflicts' }}
+
+            ### Changed Files
+            ```
+            ${{ steps.changes.outputs.changed_files }}
+            ```
+
+            ### What Happens Next?
+            ${{ inputs.auto_merge && '1. CI validation runs automatically
+            2. Auto-approval workflow reviews this PR
+            3. PR auto-merges when all checks pass
+            4. No manual intervention required' || '1. CI validation runs automatically
+            2. Manual review and merge required' }}
+
+            ---
+
+            🤖 This PR was created by the NixLine smart policy sync workflow.
+            ${{ steps.pull.outputs.has_conflicts == 'true' && '
+
+            ⚠️ **Note**: This PR contains merge conflicts that need manual resolution.' || '' }}
+          branch: policy-sync-${{ github.run_number }}
+          delete-branch: true
+          labels: |
+            automated
+            policy-sync
+            nixline
+            ${{ steps.pull.outputs.has_conflicts == 'true' && 'has-conflicts' || '' }}
+            ${{ steps.validate.outputs.validation_errors > 0 && 'needs-review' || '' }}
+
+      - name: Enable auto-merge on PR
+        if: |
+          steps.create_pr.outputs.pull-request-number &&
+          inputs.auto_merge &&
+          steps.pull.outputs.has_conflicts != 'true' &&
+          steps.validate.outputs.validation_errors == 0
+        run: |
+          echo "## Auto-Merge Configuration" >> $GITHUB_STEP_SUMMARY
+
+          PR_NUMBER="${{ steps.create_pr.outputs.pull-request-number }}"
+
+          # Wait for PR to be ready (GitHub needs a moment)
+          sleep 5
+
+          # Enable auto-merge
+          gh pr merge "$PR_NUMBER" --auto --squash
+
+          echo "✅ Auto-merge enabled for PR #$PR_NUMBER" >> $GITHUB_STEP_SUMMARY
+          echo "The PR will merge automatically once CI checks pass." >> $GITHUB_STEP_SUMMARY
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create issue for conflicts
+        if: steps.pull.outputs.has_conflicts == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Policy sync requires manual conflict resolution',
+              body: `## Manual Intervention Required
+
+            The automated policy sync encountered merge conflicts that require manual resolution.
+
+            **Pull Request**: #${{ steps.create_pr.outputs.pull-request-number || 'N/A' }}
+            **Baseline**: \`${{ inputs.baseline_repo }}@${{ inputs.baseline_ref }}\`
+            **Workflow Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            ### Next Steps
+
+            1. Check out the PR branch locally
+            2. Resolve merge conflicts manually
+            3. Push the resolved changes
+            4. The PR will auto-merge once conflicts are resolved and CI passes
+
+            ### Common Conflict Causes
+            - Local customizations conflicting with baseline updates
+            - Concurrent edits to policy files
+            - Format changes in baseline that conflict with local changes`,
+              labels: ['automated', 'policy-sync', 'merge-conflict', 'needs-attention']
+            });
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "## Workflow Summary" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.check.outputs.check_result }}" == "0" ]; then
+            echo "✅ **Result**: Policies already in sync - no action needed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.direct_push.outputs.push_success }}" == "true" ]; then
+            echo "✅ **Result**: Policy changes pushed directly to main" >> $GITHUB_STEP_SUMMARY
+          elif [ -n "${{ steps.create_pr.outputs.pull-request-number }}" ]; then
+            echo "✅ **Result**: PR #${{ steps.create_pr.outputs.pull-request-number }} created" >> $GITHUB_STEP_SUMMARY
+            echo "🔗 [View Pull Request](${{ steps.create_pr.outputs.pull-request-url }})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Result**: Policy sync failed - check logs" >> $GITHUB_STEP_SUMMARY
+          fi

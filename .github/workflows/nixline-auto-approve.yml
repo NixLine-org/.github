@@ -40,7 +40,11 @@ permissions:
 
 jobs:
   auto-approve:
-    if: github.actor == inputs.actor_filter && contains(github.event.pull_request.title, inputs.pr_title_pattern)
+    if: |
+      github.actor == inputs.actor_filter &&
+      contains(github.event.pull_request.title, inputs.pr_title_pattern) &&
+      !contains(github.event.pull_request.labels.*.name, 'has-conflicts') &&
+      !contains(github.event.pull_request.labels.*.name, 'needs-review')
     runs-on: ubuntu-latest
 
     steps:

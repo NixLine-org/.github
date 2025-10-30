@@ -25,8 +25,9 @@ This repository contains reusable GitHub Actions workflows for the NixLine organ
   - [Stable Tag Update Workflow](#stable-tag-update-workflow)
 - [Workflow Documentation](#workflow-documentation)
   - [Basic CI](#basic-ci-nixline-ciyml)
-  - [Policy Sync (Direct)](#policy-sync-nixline-policy-syncyml)
-  - [Policy Sync with PRs](#policy-sync-with-auto-approved-prs-nixline-policy-sync-pryml)
+  - [Policy Sync Smart (Recommended)](#policy-sync-smart-nixline-policy-sync-smartyml)
+  - [Policy Sync (Direct)](#policy-sync-nixline-policy-syncyml) **[DEPRECATED]**
+  - [Policy Sync with PRs](#policy-sync-with-auto-approved-prs-nixline-policy-sync-pryml) **[DEPRECATED]**
   - [Auto-Approve](#auto-approve-nixline-auto-approveyml)
   - [Dependabot Auto-Merge](#dependabot-auto-merge-nixline-dependabot-automergeyml)
   - [Flake Updates](#flake-updates-nixline-flake-updateyml)
@@ -129,7 +130,8 @@ graph TD
 | Reusable Workflow | Required Permissions | Purpose |
 |-------------------|---------------------|---------|
 | `nixline-ci.yml` | `contents: read` | Checkout repository for CI checks |
-| `nixline-policy-sync.yml` | `contents: write`<br/>`issues: write` | Commit policy updates<br/>Create issues for conflicts |
+| `nixline-policy-sync-smart.yml` | `contents: write`<br/>`pull-requests: write`<br/>`issues: write` | Commit or create PRs<br/>Manage PRs<br/>Create issues for conflicts |
+| `nixline-policy-sync.yml` | `contents: write`<br/>`issues: write` | **[DEPRECATED]** Commit policy updates<br/>Create issues for conflicts |
 | `migrate-governance.yml` | `contents: write`<br/>`pull-requests: write`<br/>`actions: read` | Commit generated baseline<br/>Create PR (when using PR mode)<br/>Read workflow artifacts |
 | `test-governance-migration.yml` | `contents: read`<br/>`actions: read` | Clone external repositories<br/>Upload migration reports |
 
@@ -178,8 +180,9 @@ This repository provides several reusable workflows for NixLine automation. Each
 | Workflow | Purpose | Used By | Pattern |
 |----------|---------|---------|---------|
 | `nixline-ci.yml` | Basic CI validation | All consumer repos | All patterns |
-| `nixline-policy-sync.yml` | Direct policy sync | Consumer repos | Direct commit |
-| `nixline-policy-sync-pr.yml` | Policy sync with PRs | Consumer repos | Auto-approved PRs |
+| `nixline-policy-sync-smart.yml` | **Smart policy sync (RECOMMENDED)** | Consumer repos | Adaptive |
+| `nixline-policy-sync.yml` | ~~Direct policy sync~~ **DEPRECATED** | Legacy only | Direct commit |
+| `nixline-policy-sync-pr.yml` | ~~Policy sync with PRs~~ **DEPRECATED** | Legacy only | Auto-approved PRs |
 | `nixline-auto-approve.yml` | Auto-approve PRs | Consumer repos | Auto-approved PRs |
 | `nixline-dependabot-automerge.yml` | Dependabot auto-merge | Consumer repos | Dependency automation |
 | `nixline-flake-update.yml` | Flake lock updates | Template-based repos | Template pattern |
@@ -241,6 +244,112 @@ jobs:
 ## Workflow Diagrams
 
 Visual representation of how each workflow operates:
+
+### Policy Sync Smart (`nixline-policy-sync-smart.yml`)
+
+The **recommended** unified policy sync workflow that intelligently handles all synchronization scenarios with automatic fallback patterns and rate limit protection for organizations managing hundreds of repositories.
+
+**Key Features:**
+- Attempts direct push first for speed
+- Falls back to PR when branch protection requires it
+- Handles merge conflicts gracefully
+- Validates content for placeholder text
+- Protects against API rate limits
+- Single workflow replaces both deprecated patterns
+
+**Flow Diagram:**
+```mermaid
+graph TD
+    A[Policy Sync Triggered] --> B[Random Delay<br/>0-N minutes]
+    B --> C[Check Policy Compliance]
+    C -->|In Sync| D[Exit - No Action Needed]
+    C -->|Out of Sync| E[Pull Latest with Rebase]
+
+    E --> F[Materialize Policy Files]
+    F --> G[Validate Content<br/>Check for CHANGEME/TODO]
+
+    G --> H{Has Changes?}
+    H -->|No| D
+    H -->|Yes| I{Prefer PR?}
+
+    I -->|No| J[Try Direct Push]
+    I -->|Yes| N[Create PR]
+
+    J -->|Success| K[Done ✅]
+    J -->|Branch Protection| N[Create PR]
+    J -->|Merge Conflict| L[Pull & Retry Once]
+
+    L -->|Fixed| M[Push]
+    L -->|Still Conflicts| N[Create PR]
+
+    M --> K
+
+    N --> O{Has Issues?}
+    O -->|Conflicts or Errors| P[Create PR<br/>Skip Auto-merge<br/>Create Issue]
+    O -->|Clean| Q[Create PR<br/>Enable Auto-merge]
+
+    Q --> R[Auto-approve Workflow]
+    R --> S[CI Validation]
+    S --> T[Merge PR]
+    T --> K
+
+    P --> U[Manual Review Required]
+
+    style K fill:#90EE90
+    style D fill:#FFE4B5
+    style U fill:#FFB6C1
+```
+
+**Usage:**
+```yaml
+name: Policy Sync
+
+on:
+  schedule:
+    - cron: '0 14 * * 0'  # Weekly
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    uses: YOUR-ORG/.github/.github/workflows/nixline-policy-sync-smart.yml@stable
+    with:
+      consumption_pattern: direct
+      baseline_repo: YOUR-ORG/nixline-baseline
+      baseline_ref: main
+      prefer_pr: false         # Try direct push first (default)
+      auto_merge: true         # Enable auto-merge if PR created
+      stagger_minutes: 5       # Random delay to prevent rate limits
+```
+
+**Configuration Options:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `baseline_ref` | string | `main` | Baseline branch/tag to sync from |
+| `consumption_pattern` | string | `direct` | Pattern: direct, template-based, or configuration-driven |
+| `baseline_repo` | string | `NixLine-org/nixline-baseline` | Baseline repository |
+| `config_file` | string | `.nixline.toml` | Config file for configuration-driven pattern |
+| `prefer_pr` | boolean | `false` | Always create PR even if direct push would work |
+| `auto_merge` | boolean | `true` | Enable auto-merge on PRs |
+| `stagger_minutes` | number | `5` | Max random delay in minutes for rate limiting |
+
+**Rate Limit Protection:**
+
+The workflow includes automatic protection against GitHub API rate limits (80 PRs/minute, 500 PRs/hour) through:
+- **Staggered execution**: Random delays distribute load across time
+- **Natural throttling**: Workflow runtime prevents burst creation
+- **Graceful failures**: Creates issues instead of failing silently
+
+**Advantages over deprecated workflows:**
+- **One workflow for all scenarios** - simpler configuration
+- **Intelligent fallback** - optimal path for each situation
+- **Built-in safety** - validation and conflict handling
+- **Scale-ready** - handles 500+ repositories without hitting rate limits
+- **Better error reporting** - detailed GitHub Step Summary output
 
 ### Policy Sync Workflow Comparison
 
@@ -304,7 +413,9 @@ graph TD
 | **Enterprise Ready** | Basic | Full compliance features |
 | **Best For** | Simple repos, fast updates | Enterprise, audit requirements |
 
-### Policy Sync (`nixline-policy-sync.yml`)
+### Policy Sync (`nixline-policy-sync.yml`) **[DEPRECATED]**
+
+⚠️ **This workflow is deprecated. Use [`nixline-policy-sync-smart.yml`](#policy-sync-smart-nixline-policy-sync-smartyml) instead.**
 
 Automatically syncs policy files from the baseline repository with instant materialization via direct commits.
 
@@ -375,7 +486,9 @@ schedule:
   #- cron: '0 9 * * 1'   # Monday 9 AM UTC
 ```
 
-### Policy Sync with Auto-Approved PRs (`nixline-policy-sync-pr.yml`)
+### Policy Sync with Auto-Approved PRs (`nixline-policy-sync-pr.yml`) **[DEPRECATED]**
+
+⚠️ **This workflow is deprecated. Use [`nixline-policy-sync-smart.yml`](#policy-sync-smart-nixline-policy-sync-smartyml) with `prefer_pr: true` instead.**
 
 Creates pull requests for policy updates with optional auto-approval for enterprise governance requirements.
 

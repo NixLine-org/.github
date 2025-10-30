@@ -1,4 +1,12 @@
-name: NixLine Policy Sync (reusable)
+name: NixLine Policy Sync (reusable) - DEPRECATED
+
+# ⚠️ DEPRECATED: Use nixline-policy-sync-smart.yml instead
+# This workflow is maintained for backward compatibility only
+# The smart workflow provides:
+# - Automatic fallback from direct push to PR
+# - Merge conflict handling
+# - Content validation
+# - Rate limit protection for large organizations
 
 on:
   workflow_call:

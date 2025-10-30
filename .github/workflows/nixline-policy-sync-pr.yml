@@ -1,4 +1,13 @@
-name: NixLine Policy Sync with PR (reusable)
+name: NixLine Policy Sync with PR (reusable) - DEPRECATED
+
+# ⚠️ DEPRECATED: Use nixline-policy-sync-smart.yml instead
+# This workflow is maintained for backward compatibility only
+# The smart workflow provides all PR functionality plus:
+# - Automatic fallback between direct push and PR modes
+# - Merge conflict handling
+# - Content validation
+# - Rate limit protection for large organizations
+# Use smart workflow with prefer_pr: true for PR-only behavior
 
 on:
   workflow_call:

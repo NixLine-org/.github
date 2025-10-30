@@ -419,38 +419,70 @@ jobs:
           - [Reusable Workflows](https://github.com/NixLine-org/.github)
           EOF
 
-      - name: Check for test edge cases
+      - name: Edge case testing guidance
         run: |
           cat >> $GITHUB_STEP_SUMMARY << 'EOF'
 
-          ### Testing Edge Cases
+          ### Edge Case Testing Scenarios
 
-          To thoroughly test your governance repository:
+          To thoroughly test governance migration, consider these edge cases:
 
-          1. **Test with minimal configuration:**
-          ```yaml
-          uses: NixLine-org/.github/.github/workflows/test-governance-migration.yml@stable
-          with:
-            organization-name: "Minimal Test"
-            organization-email: "test@example.com"
-            dry-run-only: true
+          **Repository Structure Edge Cases:**
+          - **Minimal governance**: Repository with only LICENSE file
+          - **Comprehensive governance**: Repository with LICENSE, SECURITY.md, CODEOWNERS, etc.
+          - **Empty repository**: Repository with no governance files
+          - **Large repository**: Repository with extensive file structure
+
+          **Organization Parameter Edge Cases:**
+          - **Long organization names**: Test with 100+ character organization names
+          - **Special characters**: Test with unicode, spaces, and special chars in names
+          - **Multiple contacts**: Test with different org-email vs security-email
+          - **Invalid emails**: Test error handling with malformed email addresses
+
+          **Migration Compatibility Edge Cases:**
+          - **Legacy formats**: Test with old-style configuration files
+          - **Conflicting structures**: Test with non-standard governance layouts
+          - **Different licenses**: Test with various SPDX license types
+          - **Custom patterns**: Test with organization-specific governance files
+
+          **Error Handling Edge Cases:**
+          - **Private repositories**: Test with repositories requiring authentication
+          - **Invalid URLs**: Test with malformed or non-existent repository URLs
+          - **Network failures**: Test behavior during git clone failures
+          - **Permission errors**: Test with insufficient file system permissions
+
+          **Baseline Version Edge Cases:**
+          - **Different versions**: Test with stable vs main baseline references
+          - **Custom baselines**: Test with forked baseline repositories
+          - **Version compatibility**: Test with older baseline versions
+
+          ### After Migration Testing
+
+          If your governance repository passed migration compatibility testing, next steps:
+
+          **1. Run Full Migration:**
+          ```bash
+          nix run github:NixLine-org/nixline-baseline#migrate-governance -- \
+            --governance-repo https://github.com/yourorg/governance \
+            --org-name "Your Organization" \
+            --org-email "admin@yourorg.com" \
+            --output-dir ./nixline-baseline
           ```
 
-          2. **Test full migration (generates files):**
-          ```yaml
-          uses: NixLine-org/.github/.github/workflows/test-governance-migration.yml@stable
-          with:
-            organization-name: "Your Organization"
-            organization-email: "admin@yourorg.com"
-            dry-run-only: false
-          ```
+          **2. Set Up Consumer Repository Testing:**
+          Use these workflows to test your consumer repositories:
 
-          3. **Test with custom baseline:**
-          ```yaml
-          uses: NixLine-org/.github/.github/workflows/test-governance-migration.yml@stable
-          with:
-            organization-name: "Custom Test"
-            organization-email: "test@example.com"
-            baseline-ref: "github:yourorg/custom-nixline-baseline"
+          - **CI Testing**: `nixline-ci.yml` - validates policy compliance and runs checks
+          - **Policy Sync**: `nixline-policy-sync.yml` - automatically syncs policies from baseline
+          - **Pre-commit**: `nixline-pre-commit.yml` - enforces policy compliance before commits
+
+          **3. Create Baseline Repository:**
+          ```bash
+          gh repo create yourorg/nixline-baseline --public
+          cd nixline-baseline
+          git init && git add . && git commit -m "Initial NixLine baseline"
+          git remote add origin https://github.com/yourorg/nixline-baseline
+          git push -u origin main
+          git tag stable && git push origin stable
           ```
           EOF

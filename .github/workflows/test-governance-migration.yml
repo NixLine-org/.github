@@ -8,8 +8,9 @@ on:
     inputs:
       governance-repo:
         description: 'URL of governance repository to test'
-        required: true
+        required: false
         type: string
+        default: 'https://github.com/example-org/governance'
       organization-name:
         description: 'Organization name for testing'
         required: false
@@ -53,7 +54,9 @@ jobs:
     steps:
       - name: Checkout governance repository
         run: |
-          git clone "${{ inputs.governance-repo }}" governance-repo
+          governance_repo="${{ inputs.governance-repo || 'https://github.com/example-org/governance' }}"
+          echo "Cloning governance repository: $governance_repo"
+          git clone "$governance_repo" governance-repo
           cd governance-repo
 
       - name: Install Nix
@@ -146,16 +149,18 @@ jobs:
           echo "## Migration Compatibility Test" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Prepare migration parameters
-          org_name="${{ inputs.organization-name }}"
-          org_email="${{ inputs.organization-email }}"
-          security_email="${{ inputs.security-email || inputs.organization-email }}"
+          # Prepare migration parameters with fallbacks
+          governance_repo="${{ inputs.governance-repo || 'https://github.com/example-org/governance' }}"
+          org_name="${{ inputs.organization-name || 'Test Organization' }}"
+          org_email="${{ inputs.organization-email || 'admin@example.com' }}"
+          security_email="${{ inputs.security-email || inputs.organization-email || 'admin@example.com' }}"
+          baseline_ref="${{ inputs.baseline-ref || 'github:NixLine-org/nixline-baseline' }}"
 
           echo "Testing governance migration with:"
           echo "  Organization: $org_name"
-          echo "  Repository: ${{ inputs.governance-repo }}"
-          echo "  Baseline: ${{ inputs.baseline-ref }}"
-          echo "  Dry run only: ${{ inputs.dry-run-only }}"
+          echo "  Repository: $governance_repo"
+          echo "  Baseline: $baseline_ref"
+          echo "  Dry run only: ${{ inputs.dry-run-only || true }}"
 
           # Run migrate-governance in dry-run mode
           governance_repo_path="$(pwd)/governance-repo"
@@ -183,12 +188,12 @@ jobs:
             echo "Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
             echo ""
             echo "## Configuration"
-            echo "- **Repository**: ${{ inputs.governance-repo }}"
+            echo "- **Repository**: $governance_repo"
             echo "- **Organization**: $org_name"
             echo "- **Contact Email**: $org_email"
             echo "- **Security Email**: $security_email"
-            echo "- **Baseline Reference**: ${{ inputs.baseline-ref }}"
-            echo "- **Dry Run Only**: ${{ inputs.dry-run-only }}"
+            echo "- **Baseline Reference**: $baseline_ref"
+            echo "- **Dry Run Only**: ${{ inputs.dry-run-only || true }}"
             echo ""
             echo "## Migration Analysis"
             echo ""
@@ -196,9 +201,9 @@ jobs:
 
           # Run migration test and capture output
           echo "Running migration compatibility test..."
-          echo "Command: nix run ${{ inputs.baseline-ref }}#migrate-governance -- ${migration_args[*]}"
+          echo "Command: nix run $baseline_ref#migrate-governance -- ${migration_args[*]}"
 
-          if nix run "${{ inputs.baseline-ref }}#migrate-governance" -- "${migration_args[@]}"; then
+          if nix run "$baseline_ref#migrate-governance" -- "${migration_args[@]}"; then
             echo "" >> migration-report.md
             echo "## Result: PASSED" >> migration-report.md
             echo "The repository is compatible with NixLine governance migration." >> migration-report.md
@@ -224,27 +229,33 @@ jobs:
           retention-days: 7
 
       - name: Test actual migration (if enabled)
-        if: ${{ !inputs.dry-run-only }}
+        if: ${{ inputs.dry-run-only != true }}
         run: |
           cd governance-repo
           set -euo pipefail
+
+          # Use same variables as migration test
+          org_name="${{ inputs.organization-name || 'Test Organization' }}"
+          org_email="${{ inputs.organization-email || 'admin@example.com' }}"
+          security_email="${{ inputs.security-email || inputs.organization-email || 'admin@example.com' }}"
+          baseline_ref="${{ inputs.baseline-ref || 'github:NixLine-org/nixline-baseline' }}"
 
           echo "## Full Migration Test" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Run actual migration
-          nix run "${{ inputs.baseline-ref }}#migrate-governance" -- \
+          nix run "$baseline_ref#migrate-governance" -- \
             --governance-repo . \
-            --org-name "${{ inputs.organization-name }}" \
-            --org-email "${{ inputs.organization-email }}" \
-            --security-email "${{ inputs.security-email || inputs.organization-email }}" \
+            --org-name "$org_name" \
+            --org-email "$org_email" \
+            --security-email "$security_email" \
             --output-dir "../generated-baseline" \
             --verbose
 
           echo "[FOUND] Generated baseline successfully" >> $GITHUB_STEP_SUMMARY
 
       - name: Validate generated baseline
-        if: ${{ !inputs.dry-run-only }}
+        if: ${{ inputs.dry-run-only != true }}
         run: |
           cd generated-baseline
 
@@ -278,7 +289,7 @@ jobs:
           fi
 
       - name: Upload generated baseline
-        if: ${{ !inputs.dry-run-only }}
+        if: ${{ inputs.dry-run-only != true }}
         uses: actions/upload-artifact@v4
         with:
           name: nixline-baseline-${{ github.repository_owner }}-${{ github.run_number }}

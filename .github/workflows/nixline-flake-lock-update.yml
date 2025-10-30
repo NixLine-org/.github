@@ -18,10 +18,21 @@ on:
         required: false
         type: boolean
         default: true
+      create-pr:
+        description: 'Create a PR instead of pushing directly'
+        required: false
+        type: boolean
+        default: false
+      enable-auto-merge:
+        description: 'Enable auto-merge on created PR'
+        required: false
+        type: boolean
+        default: false
 
 # Note: This workflow requires the following permissions:
 # permissions:
-#   contents: write    # To commit flake.lock updates
+#   contents: write         # To commit flake.lock updates
+#   pull-requests: write    # To create PRs (if create-pr is true)
 
 jobs:
   update-flake-lock:
@@ -114,7 +125,9 @@ jobs:
             exit 1
           fi
 
-      - name: Commit flake.lock updates
+      - name: Commit and push or create PR
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           FLAKE_DIR="${{ inputs.flake-directory }}"
           cd "$FLAKE_DIR"
@@ -137,14 +150,46 @@ jobs:
             COMMIT_MSG="$COMMIT_MSG in $FLAKE_DIR"
           fi
 
-          git commit -m "$COMMIT_MSG
+          FULL_COMMIT_MSG="$COMMIT_MSG
 
           Automated update of flake inputs.
 
           Updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
 
-          # Push changes
-          git push origin ${{ github.ref_name }}
+          if [[ "${{ inputs.create-pr }}" == "true" ]]; then
+            # Create PR mode
+            BRANCH_NAME="flake-lock-update-$(date +%s)"
+            git checkout -b "$BRANCH_NAME"
+            git commit -m "$FULL_COMMIT_MSG"
+            git push origin "$BRANCH_NAME"
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** Flake lock updated and committed successfully" >> $GITHUB_STEP_SUMMARY
+            # Create PR
+            PR_TITLE="$COMMIT_MSG"
+            PR_BODY="Automated flake.lock update
+
+          This PR updates \`flake.lock\` in \`$FLAKE_DIR\` with the latest input versions.
+
+          **Updated:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          The changes have been validated with \`nix flake check\`."
+
+            PR_URL=$(gh pr create --title "$PR_TITLE" --body "$PR_BODY" --base ${{ github.ref_name }} --head "$BRANCH_NAME")
+            echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
+
+            # Enable auto-merge if requested
+            if [[ "${{ inputs.enable-auto-merge }}" == "true" ]]; then
+              gh pr merge "$PR_URL" --auto --squash
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "**Status:** PR created with auto-merge enabled: $PR_URL" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "**Status:** PR created: $PR_URL" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            # Direct push mode
+            git commit -m "$FULL_COMMIT_MSG"
+            git push origin ${{ github.ref_name }}
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Status:** Flake lock updated and committed successfully" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -790,11 +790,42 @@ jobs:
 - `flake-directory`: Directory containing flake.nix (default: '.')
 - `commit-message`: Custom commit message (default: 'Update flake.lock')
 - `validate-after-update`: Run validation after update (default: true)
+- `create-pr`: Create a PR instead of pushing directly (default: false)
+- `enable-auto-merge`: Enable auto-merge on created PR (default: false)
+
+**Direct Push Mode:**
+```yaml
+jobs:
+  update-flake-lock:
+    uses: YOUR-ORG/.github/.github/workflows/nixline-flake-lock-update.yml@stable
+    with:
+      flake-directory: 'templates/consumer'
+      commit-message: 'Update consumer template flake.lock'
+      validate-after-update: true
+```
+
+**PR Mode with Auto-Merge (for repos with branch protection):**
+```yaml
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-flake-lock:
+    uses: YOUR-ORG/.github/.github/workflows/nixline-flake-lock-update.yml@stable
+    with:
+      flake-directory: 'templates/consumer'
+      commit-message: 'Update consumer template flake.lock'
+      validate-after-update: true
+      create-pr: true
+      enable-auto-merge: true
+```
 
 **Use Cases:**
 - Baseline repos with consumer templates
 - Any repository with flake.nix that needs automatic dependency updates
 - Multi-flake repositories with templates in subdirectories
+- Repositories with branch protection requiring PRs
 
 ---
 

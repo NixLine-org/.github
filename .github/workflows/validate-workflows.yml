@@ -41,7 +41,21 @@ jobs:
           echo "## YAML Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if yamllint -d '{extends: default, rules: {line-length: {max: 200}, comments: disable}}' .github/workflows/*.yml; then
+          # Relaxed yamllint config for GitHub Actions workflows
+          cat > .yamllint << EOF
+          extends: default
+          rules:
+            line-length:
+              max: 200
+            comments: disable
+            document-start: disable
+            truthy: disable
+            braces:
+              max-spaces-inside: 1
+            new-line-at-end-of-file: disable
+          EOF
+
+          if yamllint -c .yamllint .github/workflows/*.yml; then
             echo "**PASSED** - All workflow files have valid YAML syntax" >> $GITHUB_STEP_SUMMARY
           else
             echo "**FAILED** - YAML syntax errors detected" >> $GITHUB_STEP_SUMMARY

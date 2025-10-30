@@ -51,6 +51,34 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.target_branch }}
 
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v9
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v2
+
+      - name: Validate flake before tagging
+        run: |
+          echo "## Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Run flake check and capture result
+          if nix flake check --show-trace 2>&1 | tee validation.log; then
+            echo "**PASSED** - Flake validation successful" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The commit passes all validation checks and is safe to tag as stable." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**FAILED** - Flake validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The commit failed validation and will not be tagged as stable." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Validation Output:**" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -20 validation.log >> $GITHUB_STEP_SUMMARY || echo "Failed to read validation log" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
       - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
@@ -137,4 +165,4 @@ jobs:
           echo "- **New Commit:** $(git rev-parse HEAD)" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit Message:** $(git log -1 --pretty=%B | head -1)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** Tag successfully updated and verified" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** Validation passed, tag successfully updated and verified" >> $GITHUB_STEP_SUMMARY

@@ -10,8 +10,9 @@ on:
           type: string,
         }
       sync_mode: { required: false, default: ephemeral, type: string }
-permissions:
-  contents: read
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: read    # To checkout and read repository contents
 jobs:
   build:
     runs-on: ubuntu-latest

@@ -23,9 +23,10 @@ on:
         required: false
         type: string
 
-permissions:
-  contents: write
-  issues: write
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write   # To commit policy updates
+#   issues: write     # To create issues for policy conflicts
 
 jobs:
   policy-sync:

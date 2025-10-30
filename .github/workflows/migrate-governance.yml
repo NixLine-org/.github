@@ -48,10 +48,11 @@ on:
         type: boolean
         default: false
 
-permissions:
-  contents: write
-  pull-requests: write
-  actions: read
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write        # To commit generated baseline
+#   pull-requests: write   # To create PR (when output-mode is 'pr')
+#   actions: read          # To read workflow artifacts
 
 jobs:
   migrate-governance:

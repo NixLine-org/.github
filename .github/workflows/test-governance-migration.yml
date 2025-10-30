@@ -55,7 +55,10 @@ jobs:
     steps:
       - name: Checkout governance repository
         run: |
-          governance_repo="${{ inputs.governance-repo || 'https://github.com/example-org/governance' }}"
+          governance_repo="${{ inputs.governance-repo }}"
+          if [ -z "$governance_repo" ]; then
+            governance_repo="https://github.com/example-org/governance"
+          fi
           echo "Cloning governance repository: $governance_repo"
           git clone "$governance_repo" governance-repo
           cd governance-repo
@@ -151,17 +154,34 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Prepare migration parameters with fallbacks
-          governance_repo="${{ inputs.governance-repo || 'https://github.com/example-org/governance' }}"
-          org_name="${{ inputs.organization-name || 'Test Organization' }}"
-          org_email="${{ inputs.organization-email || 'admin@example.com' }}"
-          security_email="${{ inputs.security-email || inputs.organization-email || 'admin@example.com' }}"
-          baseline_ref="${{ inputs.baseline-ref || 'github:NixLine-org/nixline-baseline' }}"
+          governance_repo="${{ inputs.governance-repo }}"
+          org_name="${{ inputs.organization-name }}"
+          org_email="${{ inputs.organization-email }}"
+          security_email="${{ inputs.security-email }}"
+          baseline_ref="${{ inputs.baseline-ref }}"
+
+          # Apply fallbacks using bash
+          if [ -z "$governance_repo" ]; then
+            governance_repo="https://github.com/example-org/governance"
+          fi
+          if [ -z "$org_name" ]; then
+            org_name="Test Organization"
+          fi
+          if [ -z "$org_email" ]; then
+            org_email="admin@example.com"
+          fi
+          if [ -z "$security_email" ]; then
+            security_email="$org_email"
+          fi
+          if [ -z "$baseline_ref" ]; then
+            baseline_ref="github:NixLine-org/nixline-baseline"
+          fi
 
           echo "Testing governance migration with:"
           echo "  Organization: $org_name"
           echo "  Repository: $governance_repo"
           echo "  Baseline: $baseline_ref"
-          echo "  Dry run only: ${{ inputs.dry-run-only || true }}"
+          echo "  Dry run only: true"
 
           # Run migrate-governance in dry-run mode
           governance_repo_path="$(pwd)/governance-repo"
@@ -194,7 +214,7 @@ jobs:
             echo "- **Contact Email**: $org_email"
             echo "- **Security Email**: $security_email"
             echo "- **Baseline Reference**: $baseline_ref"
-            echo "- **Dry Run Only**: ${{ inputs.dry-run-only || true }}"
+            echo "- **Dry Run Only**: true"
             echo ""
             echo "## Migration Analysis"
             echo ""
@@ -236,10 +256,24 @@ jobs:
           set -euo pipefail
 
           # Use same variables as migration test
-          org_name="${{ inputs.organization-name || 'Test Organization' }}"
-          org_email="${{ inputs.organization-email || 'admin@example.com' }}"
-          security_email="${{ inputs.security-email || inputs.organization-email || 'admin@example.com' }}"
-          baseline_ref="${{ inputs.baseline-ref || 'github:NixLine-org/nixline-baseline' }}"
+          org_name="${{ inputs.organization-name }}"
+          org_email="${{ inputs.organization-email }}"
+          security_email="${{ inputs.security-email }}"
+          baseline_ref="${{ inputs.baseline-ref }}"
+
+          # Apply fallbacks using bash
+          if [ -z "$org_name" ]; then
+            org_name="Test Organization"
+          fi
+          if [ -z "$org_email" ]; then
+            org_email="admin@example.com"
+          fi
+          if [ -z "$security_email" ]; then
+            security_email="$org_email"
+          fi
+          if [ -z "$baseline_ref" ]; then
+            baseline_ref="github:NixLine-org/nixline-baseline"
+          fi
 
           echo "## Full Migration Test" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

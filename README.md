@@ -6,6 +6,7 @@ This repository contains reusable GitHub Actions workflows for the NixLine organ
 
 - [Overview](#overview)
 - [Architecture](#architecture)
+- [Security & Permissions](#security--permissions)
 - [Available Workflows](#available-workflows)
 - [Workflow Diagrams](#workflow-diagrams)
   - [Policy Sync Workflow Comparison](#policy-sync-workflow-comparison)
@@ -80,6 +81,82 @@ The **`.github`** repository (this repo) contains reusable workflows that auto-c
 **Instant materialization:** Policy changes are pushed directly to consumer repos without PR bottlenecks. Organizations requiring review can use branch protection rules.
 
 **Note on forking:** Organizations should fork this repository to customize workflows for their own baseline. The workflows reference specific baseline repositories and need to be updated to point to your organization's forked baseline. This gives you complete control over CI/CD automation while maintaining the same workflow structure.
+
+---
+
+## Security & Permissions
+
+### Reusable Workflow Security Model
+
+NixLine follows GitHub's security best practices for reusable workflows by **not defining permissions** in the reusable workflows themselves. This gives calling workflows complete control over what permissions to grant.
+
+```mermaid
+graph TD
+    A[ Calling Workflow<br/>governance-migration-demo/.github/workflows/test.yml] -->|grants permissions| B[ Reusable Workflow<br/>.github/.github/workflows/test-governance-migration.yml]
+
+    A --> C[ Permissions Block<br/>contents: read<br/>actions: read]
+    B --> D[ Documentation Comments<br/># Note: This workflow requires:<br/># contents: read<br/># actions: read]
+
+    C -.->|"security boundary"| B
+
+    style A fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    style B fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style C fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    style D fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+```
+
+### Security Benefits
+
+| Security Aspect | Benefit |
+|-----------------|---------|
+| **Principle of Least Privilege** | Each calling workflow grants only the permissions it actually needs |
+| **Explicit Permission Control** | Organizations can see exactly what permissions they're granting |
+| **No Permission Inheritance** | Reusable workflows cannot escalate permissions beyond what's granted |
+| **Audit Trail** | Permission grants are visible in calling workflow files |
+| **Customizable Security** | Organizations can modify permissions when forking |
+
+###  Permission Requirements by Workflow
+
+| Reusable Workflow | Required Permissions | Purpose |
+|-------------------|---------------------|---------|
+| `nixline-ci.yml` | `contents: read` | Checkout repository for CI checks |
+| `nixline-policy-sync.yml` | `contents: write`<br/>`issues: write` | Commit policy updates<br/>Create issues for conflicts |
+| `migrate-governance.yml` | `contents: write`<br/>`pull-requests: write`<br/>`actions: read` | Commit generated baseline<br/>Create PR (when using PR mode)<br/>Read workflow artifacts |
+| `test-governance-migration.yml` | `contents: read`<br/>`actions: read` | Clone external repositories<br/>Upload migration reports |
+
+### How to Use Reusable Workflows Securely
+
+**Correct Usage:**
+```yaml
+name: CI
+on: [push, pull_request]
+
+permissions:
+  contents: read  # Explicitly grant required permissions
+
+jobs:
+  test:
+    uses: NixLine-org/.github/.github/workflows/nixline-ci.yml@stable
+```
+
+**Insecure Usage:**
+```yaml
+name: CI
+on: [push, pull_request]
+
+permissions: write-all  # Over-privileged!
+
+jobs:
+  test:
+    uses: NixLine-org/.github/.github/workflows/nixline-ci.yml@stable
+```
+
+### Security Considerations
+
+- **Always use specific permissions**: Avoid `permissions: write-all` or overly broad permissions
+- **Pin to stable tags**: Use `@stable` or specific commit SHAs instead of `@main`
+- **Review permission requirements**: Check the workflow documentation for required permissions
+- **Monitor permission changes**: When updating to new workflow versions, review any permission requirement changes
 
 ---
 

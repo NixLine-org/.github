@@ -1,0 +1,181 @@
+# Reusable GitHub Actions workflow for NixLine governance migration
+# This workflow migrates existing governance repositories to create custom NixLine baselines
+# Uses Nix-idiomatic fetchGit for deterministic repository fetching
+
+name: NixLine Governance Migration
+
+on:
+  workflow_call:
+    inputs:
+      governance-repo:
+        description: 'URL of the governance repository to migrate (public or private with appropriate access)'
+        required: true
+        type: string
+      organization-name:
+        description: 'Organization name for the baseline'
+        required: true
+        type: string
+      organization-email:
+        description: 'Organization contact email'
+        required: true
+        type: string
+      security-email:
+        description: 'Security contact email (defaults to organization-email)'
+        required: false
+        type: string
+      default-team:
+        description: 'Default team handle for code ownership'
+        required: false
+        type: string
+      output-mode:
+        description: 'Output mode: artifact, commit, or pr'
+        required: false
+        type: string
+        default: 'artifact'
+      target-branch:
+        description: 'Target branch for commits (when output-mode is commit or pr)'
+        required: false
+        type: string
+        default: 'main'
+      commit-message:
+        description: 'Commit message for baseline updates'
+        required: false
+        type: string
+        default: 'Update baseline from governance migration'
+      dry-run:
+        description: 'Run in dry-run mode (analysis only)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  migrate-governance:
+    name: Migrate Governance Repository
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ github.token }}
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v9
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v2
+
+      - name: Run governance migration
+        id: migrate
+        run: |
+          # Run migration with URL - Nix will handle fetching via builtins.fetchGit
+          migration_cmd="nix run github:NixLine-org/nixline-baseline#migrate-governance --"
+          migration_cmd="$migration_cmd --governance-repo '${{ inputs.governance-repo }}'"
+          migration_cmd="$migration_cmd --org-name '${{ inputs.organization-name }}'"
+          migration_cmd="$migration_cmd --org-email '${{ inputs.organization-email }}'"
+
+          # Add optional parameters
+          if [[ -n "${{ inputs.security-email }}" ]]; then
+            migration_cmd="$migration_cmd --security-email '${{ inputs.security-email }}'"
+          fi
+
+          if [[ -n "${{ inputs.default-team }}" ]]; then
+            migration_cmd="$migration_cmd --default-team '${{ inputs.default-team }}'"
+          fi
+
+          if [[ "${{ inputs.dry-run }}" == "true" ]]; then
+            migration_cmd="$migration_cmd --dry-run"
+          fi
+
+          migration_cmd="$migration_cmd --output-dir ./migrated-baseline"
+          migration_cmd="$migration_cmd --verbose"
+
+          echo "Running: $migration_cmd"
+          eval "$migration_cmd"
+
+      - name: Generate migration summary
+        id: summary
+        run: |
+          echo "## Governance Migration Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Source Repository:** ${{ inputs.governance-repo }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Organization:** ${{ inputs.organization-name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Migration Date:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ inputs.dry-run }}" == "true" ]]; then
+            echo "**Mode:** Dry run (analysis only)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Migration analysis completed successfully. No files were created." >> $GITHUB_STEP_SUMMARY
+          else
+            # Count generated files
+            pack_count=$(ls ./migrated-baseline/packs/*.nix 2>/dev/null | wc -l || echo "0")
+            echo "**Generated Packs:** $pack_count" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            if [[ -f "./migrated-baseline/.nixline.toml" ]]; then
+              echo "✅ Baseline configuration generated" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if [[ -d "./migrated-baseline/packs" ]]; then
+              echo "✅ Policy packs created" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if [[ -f "./migrated-baseline/MIGRATION_REPORT.md" ]]; then
+              echo "✅ Migration report generated" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+      - name: Upload migration artifacts
+        if: inputs.output-mode == 'artifact' && inputs.dry-run != true
+        uses: actions/upload-artifact@v4
+        with:
+          name: nixline-baseline-${{ github.run_number }}
+          path: |
+            ./migrated-baseline/
+            !./migrated-baseline/.git
+          retention-days: 30
+
+      - name: Commit baseline to repository
+        if: inputs.output-mode == 'commit' && inputs.dry-run != true
+        run: |
+          # Copy migrated baseline to repository root
+          cp -r ./migrated-baseline/* .
+          cp -r ./migrated-baseline/.nixline.toml . 2>/dev/null || true
+
+          # Configure git
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          # Add and commit changes
+          git add .
+          git diff --staged --quiet || git commit -m "${{ inputs.commit-message }}"
+          git push origin ${{ inputs.target-branch }}
+
+      - name: Create pull request
+        if: inputs.output-mode == 'pr' && inputs.dry-run != true
+        run: |
+          # Create a new branch for the migration
+          migration_branch="governance-migration-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$migration_branch"
+
+          # Copy migrated baseline
+          cp -r ./migrated-baseline/* .
+          cp -r ./migrated-baseline/.nixline.toml . 2>/dev/null || true
+
+          # Configure git and commit
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git diff --staged --quiet || git commit -m "${{ inputs.commit-message }}"
+          git push origin "$migration_branch"
+
+          # Create pull request (requires gh CLI or REST API)
+          echo "Branch $migration_branch created with migrated baseline"
+          echo "Manual PR creation required - check repository branches"

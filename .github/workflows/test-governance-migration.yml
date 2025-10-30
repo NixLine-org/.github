@@ -50,6 +50,7 @@ jobs:
       languages-count: ${{ steps.analyze.outputs.languages-count }}
       governance-count: ${{ steps.analyze.outputs.governance-count }}
       config-count: ${{ steps.analyze.outputs.config-count }}
+      scripts-count: ${{ steps.analyze.outputs.scripts-count }}
       migration-compatible: ${{ steps.migrate-test.outputs.success }}
 
     steps:
@@ -136,16 +137,54 @@ jobs:
             fi
           done
 
+          # Check for organization scripts
+          scripts=()
+
+          # Check for executable files in root directory
+          while IFS= read -r -d '' script; do
+            if [[ -x "$script" && -f "$script" ]]; then
+              scripts+=("$script")
+              echo "[FOUND] Executable script: $script" >> $GITHUB_STEP_SUMMARY
+            fi
+          done < <(find . -maxdepth 1 -type f -executable -print0 2>/dev/null)
+
+          # Check for common script files by extension
+          for ext in sh py pl rb js; do
+            while IFS= read -r script; do
+              if [[ -f "$script" ]]; then
+                scripts+=("$script")
+                echo "[FOUND] Script file: $script" >> $GITHUB_STEP_SUMMARY
+              fi
+            done < <(find . -maxdepth 2 -name "*.$ext" -type f 2>/dev/null)
+          done
+
+          # Check for scripts in common directories
+          for dir in scripts bin tools; do
+            if [[ -d "$dir" ]]; then
+              while IFS= read -r script; do
+                scripts+=("$script")
+                echo "[FOUND] Script in $dir/: $script" >> $GITHUB_STEP_SUMMARY
+              done < <(find "$dir" -type f 2>/dev/null)
+            fi
+          done
+
+          # Remove duplicates from scripts array
+          if [[ ${#scripts[@]} -gt 0 ]]; then
+            mapfile -t scripts < <(printf '%s\n' "${scripts[@]}" | sort -u)
+          fi
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Summary:**" >> $GITHUB_STEP_SUMMARY
           echo "- Languages: ${#languages[@]} detected" >> $GITHUB_STEP_SUMMARY
           echo "- Governance files: ${#governance_files[@]} found" >> $GITHUB_STEP_SUMMARY
           echo "- Config files: ${#config_files[@]} found" >> $GITHUB_STEP_SUMMARY
+          echo "- Scripts: ${#scripts[@]} found" >> $GITHUB_STEP_SUMMARY
 
           # Set outputs
           echo "languages-count=${#languages[@]}" >> $GITHUB_OUTPUT
           echo "governance-count=${#governance_files[@]}" >> $GITHUB_OUTPUT
           echo "config-count=${#config_files[@]}" >> $GITHUB_OUTPUT
+          echo "scripts-count=${#scripts[@]}" >> $GITHUB_OUTPUT
 
       - name: Test migration compatibility
         id: migrate-test
@@ -366,6 +405,7 @@ jobs:
           - **Languages**: ${{ needs.analyze-governance.outputs.languages-count }} programming languages detected
           - **Governance Files**: ${{ needs.analyze-governance.outputs.governance-count }} standard governance files found
           - **Configuration Files**: ${{ needs.analyze-governance.outputs.config-count }} additional config files found
+          - **Scripts**: ${{ needs.analyze-governance.outputs.scripts-count }} organization scripts found
 
           ### Migration Compatibility
           - **Compatibility Test**: ${{ needs.analyze-governance.outputs.migration-compatible == 'true' && '[FOUND] PASSED' || '[MISSING] FAILED' }}

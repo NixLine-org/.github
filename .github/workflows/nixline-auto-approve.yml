@@ -29,6 +29,11 @@ on:
         type: boolean
         default: true
 
+# Note: This workflow requires the following permissions:
+# permissions:
+#   pull-requests: write    # To approve and enable auto-merge on PRs
+#   contents: write         # To read PR details
+
 permissions:
   pull-requests: write
   contents: write

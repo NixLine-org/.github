@@ -37,6 +37,10 @@ on:
         type: string
         default: 'main'
 
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write         # To update and push tags
+
 permissions:
   contents: write
 

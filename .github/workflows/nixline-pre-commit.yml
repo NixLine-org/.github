@@ -29,6 +29,10 @@ on:
         type: string
         default: 'apply pre-commit fixes'
 
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write         # To commit pre-commit fixes
+
 permissions:
   contents: write
 

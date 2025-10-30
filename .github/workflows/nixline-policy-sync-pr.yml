@@ -34,6 +34,12 @@ on:
         type: boolean
         default: false
 
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write         # To commit policy changes
+#   pull-requests: write    # To create policy sync PRs
+#   issues: write           # To create issues on sync failures
+
 permissions:
   contents: write
   pull-requests: write

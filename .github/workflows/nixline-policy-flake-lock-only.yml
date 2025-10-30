@@ -1,6 +1,10 @@
 name: Policy — flake.lock only (reusable)
 on:
   workflow_call: {}
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: read          # To read policy configuration
+
 permissions:
   contents: read
 jobs:

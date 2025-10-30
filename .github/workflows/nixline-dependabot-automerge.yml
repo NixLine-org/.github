@@ -4,6 +4,11 @@ on:
     inputs:
       allow_minor_patch: { required: false, default: "true", type: string }
       allow_security_updates: { required: false, default: "true", type: string }
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write         # To enable auto-merge
+#   pull-requests: write    # To approve Dependabot PRs
+
 permissions:
   contents: write
   pull-requests: write

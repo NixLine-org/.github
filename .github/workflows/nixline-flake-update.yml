@@ -14,6 +14,11 @@ on:
           default: "dependencies, nix, automated",
           type: string,
         }
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write         # To commit flake.lock updates
+#   pull-requests: write    # To create PRs for updates
+
 permissions:
   contents: write
   pull-requests: write

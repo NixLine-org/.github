@@ -44,7 +44,9 @@ jobs:
       github.actor == inputs.actor_filter &&
       contains(github.event.pull_request.title, inputs.pr_title_pattern) &&
       !contains(github.event.pull_request.labels.*.name, 'has-conflicts') &&
-      !contains(github.event.pull_request.labels.*.name, 'needs-review')
+      !contains(github.event.pull_request.labels.*.name, 'needs-review') &&
+      !contains(github.event.pull_request.labels.*.name, 'security-hold') &&
+      github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
     runs-on: ubuntu-latest
 
     steps:

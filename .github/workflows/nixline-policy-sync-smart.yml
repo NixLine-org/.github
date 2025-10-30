@@ -129,6 +129,20 @@ jobs:
             echo "✅ Successfully synced with upstream" >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Security validation
+        run: |
+          # Prevent path traversal attacks
+          if find . -type l -name "*..*" 2>/dev/null | grep -q .; then
+            echo "❌ Suspicious symlinks detected" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          # Check for suspicious file paths
+          if find . -name "*../*" -o -name "*./../*" 2>/dev/null | grep -q .; then
+            echo "❌ Path traversal attempt detected" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
       - name: Materialize policy files
         id: sync
         run: |

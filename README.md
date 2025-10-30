@@ -4,6 +4,12 @@ This repository contains reusable GitHub Actions workflows for the NixLine organ
 
 **Workflow Quality:** All reusable workflows in this repository are automatically validated on every commit via the [`validate-workflows.yml`](.github/workflows/validate-workflows.yml) workflow. This ensures YAML syntax, GitHub Actions syntax and shell scripts are correct before workflows are tagged as stable and used across the organization.
 
+**Development Workflow:** Changes to this repository follow a PR-based workflow with automated validation and merging:
+1. All changes must be submitted via pull request (direct pushes to main are blocked)
+2. The validation workflow runs on every PR to check workflow syntax and quality
+3. When validation passes, PRs are automatically merged via [`auto-merge-validated.yml`](.github/workflows/auto-merge-validated.yml)
+4. After merge to main, the `stable` tag is automatically updated
+
 ## Table of Contents
 
 - [Overview](#overview)

@@ -1,0 +1,130 @@
+name: Validate Workflows
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install yamllint
+        run: |
+          pip install yamllint
+          yamllint --version
+
+      - name: Install actionlint
+        run: |
+          bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          chmod +x ./actionlint
+          sudo mv ./actionlint /usr/local/bin/
+          actionlint --version
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck --version
+
+      - name: Validate YAML syntax
+        run: |
+          echo "## YAML Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if yamllint -d '{extends: default, rules: {line-length: {max: 200}, comments: disable}}' .github/workflows/*.yml; then
+            echo "**PASSED** - All workflow files have valid YAML syntax" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**FAILED** - YAML syntax errors detected" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Validate GitHub Actions syntax
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## GitHub Actions Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Run actionlint on all workflow files
+          if actionlint .github/workflows/*.yml; then
+            echo "**PASSED** - All workflows have valid GitHub Actions syntax" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**FAILED** - GitHub Actions syntax errors detected" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Validate shell scripts in workflows
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Shell Script Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Extract and check shell scripts from workflows
+          ERRORS=0
+          for workflow in .github/workflows/*.yml; do
+            echo "Checking shell scripts in: $workflow"
+
+            # This is a basic check - actionlint already runs shellcheck
+            # but we report it separately for clarity
+            if grep -q "run: |" "$workflow" || grep -q "run: >" "$workflow"; then
+              echo "  Found shell scripts in $workflow"
+            fi
+          done
+
+          if [ $ERRORS -eq 0 ]; then
+            echo "**PASSED** - Shell scripts validated via actionlint" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**FAILED** - Shell script errors detected" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Check for required permissions documentation
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Permissions Documentation Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          MISSING_DOCS=0
+
+          for workflow in .github/workflows/*.yml; do
+            # Skip non-reusable workflows
+            if ! grep -q "workflow_call:" "$workflow"; then
+              continue
+            fi
+
+            # Check if reusable workflow has permissions documentation
+            if ! grep -q "# Note: This workflow requires" "$workflow" && \
+               ! grep -q "# permissions:" "$workflow"; then
+              echo "Warning: $workflow missing permissions documentation" >> $GITHUB_STEP_SUMMARY
+              MISSING_DOCS=$((MISSING_DOCS + 1))
+            fi
+          done
+
+          if [ $MISSING_DOCS -eq 0 ]; then
+            echo "**PASSED** - All reusable workflows document required permissions" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**WARNING** - $MISSING_DOCS reusable workflow(s) missing permissions documentation" >> $GITHUB_STEP_SUMMARY
+            echo "This is a warning only and does not fail the build" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Validation summary
+        if: success()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**All validation checks passed**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Validated workflows in \`.github/workflows/\`:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          ls -1 .github/workflows/*.yml >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

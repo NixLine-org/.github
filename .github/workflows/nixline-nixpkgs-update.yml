@@ -114,14 +114,7 @@ jobs:
 
           git add flake.nix flake.lock
 
-          git commit -m "Update nixpkgs to $SHORT_HASH
-
-Automated nixpkgs update from ${{ inputs.nixpkgs_channel }}
-
-Commit: $COMMIT_HASH
-Date: ${{ steps.fetch.outputs.commit_date }}
-
-This update will be validated before promotion to stable."
+          git commit -m "Update nixpkgs to $SHORT_HASH from ${{ inputs.nixpkgs_channel }}"
 
       - name: Push changes
         if: steps.changes.outputs.has_changes == 'true'

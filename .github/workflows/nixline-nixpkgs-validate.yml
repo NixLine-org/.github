@@ -27,6 +27,8 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    outputs:
+      validation_passed: ${{ steps.result.outputs.validation_passed }}
 
     steps:
       - name: Checkout tag
@@ -165,33 +167,41 @@ jobs:
       - name: Create issue on failure
         if: steps.result.outputs.validation_passed != 'true'
         uses: actions/github-script@v7
+        env:
+          TAG: ${{ inputs.tag_to_validate }}
+          COMMIT: ${{ steps.verify_pin.outputs.pinned_commit }}
+          FLAKE_CHECK: ${{ steps.flake_check.outputs.flake_check_passed }}
+          APPS_BUILT: ${{ steps.build_apps.outputs.apps_built }}
+          APPS_TESTED: ${{ steps.test_apps.outputs.apps_tested }}
+          BUILD_ERRORS: ${{ steps.build_apps.outputs.build_errors }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: 'Nixpkgs validation failed for ${{ inputs.tag_to_validate }}',
+              title: `Nixpkgs validation failed for ${process.env.TAG}`,
               body: `## Validation Failure
 
-The nixpkgs update validation failed for tag \`${{ inputs.tag_to_validate }}\`.
+The nixpkgs update validation failed for tag \`${process.env.TAG}\`.
 
-**Pinned commit:** \`${{ steps.verify_pin.outputs.pinned_commit }}\`
+**Pinned commit:** \`${process.env.COMMIT}\`
 
 **Validation Results:**
-- Flake check: ${{ steps.flake_check.outputs.flake_check_passed }}
-- Apps built: ${{ steps.build_apps.outputs.apps_built }}
-- Apps tested: ${{ steps.test_apps.outputs.apps_tested }}
+- Flake check: ${process.env.FLAKE_CHECK}
+- Apps built: ${process.env.APPS_BUILT}
+- Apps tested: ${process.env.APPS_TESTED}
 
-**Build errors:** ${{ steps.build_apps.outputs.build_errors }}
+**Build errors:** ${process.env.BUILD_ERRORS}
 
-**Workflow run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+**Workflow run:** ${process.env.RUN_URL}
 
 ### Next Steps
 
 1. Review the workflow logs for specific errors
 2. If nixpkgs commit is problematic, wait for next update cycle
 3. If baseline code needs fixes, make corrections and re-run validation
-4. Manual rollback: \`git tag -f ${{ inputs.tag_to_validate }} PREVIOUS_COMMIT && git push -f origin ${{ inputs.tag_to_validate }}\``,
+4. Manual rollback: \`git tag -f ${process.env.TAG} PREVIOUS_COMMIT && git push -f origin ${process.env.TAG}\``,
               labels: ['automated', 'nixpkgs-update', 'validation-failure']
             });
 

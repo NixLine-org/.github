@@ -52,12 +52,7 @@ jobs:
           git push origin :refs/tags/${{ inputs.target_tag }} || true
 
           # Create new stable tag at current commit
-          git tag -a ${{ inputs.target_tag }} -m "Promote nixpkgs update to stable
-
-Validated nixpkgs update promoted from ${{ inputs.source_tag }}
-
-Commit: ${{ steps.commit.outputs.commit_hash }}
-Validation passed: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+          git tag -a ${{ inputs.target_tag }} -m "Promote nixpkgs update to stable from ${{ inputs.source_tag }}"
 
           git push origin ${{ inputs.target_tag }}
 

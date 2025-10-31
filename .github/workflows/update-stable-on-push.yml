@@ -9,7 +9,19 @@ permissions:
   contents: write
 
 jobs:
+  wait-for-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for validation to complete
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: 'validate'
+          repo-token: ${{ github.token }}
+          wait-interval: 10
+
   update-stable:
+    needs: [wait-for-validation]
     uses: ./.github/workflows/update-stable-tag.yml
     with:
       tag_name: stable

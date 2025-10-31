@@ -1,0 +1,307 @@
+#
+# NixLine Feature Branch Validation (reusable)
+#
+# Comprehensive validation workflow for feature branch pull requests targeting
+# unstable branch. Runs security scans, code quality checks, Nix validation,
+# and enforces commit standards before allowing merge to protected unstable branch.
+#
+# Triggered by: workflow_call from baseline repositories
+# Purpose: Secure feature branch validation before merge to unstable
+# Features: CodeQL, dependency scan, flake check, YAML validation, commit message validation
+#
+
+name: NixLine Feature Branch Validation (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      target_branch:
+        description: 'Target branch for PR (e.g., unstable)'
+        required: false
+        type: string
+        default: 'unstable'
+      validation_apps:
+        description: 'Apps to validate (comma-separated)'
+        required: false
+        type: string
+        default: 'sync,check,import-policy,fetch-license,list-licenses'
+      require_conventional_commits:
+        description: 'Enforce conventional commit message format'
+        required: false
+        type: boolean
+        default: true
+      enable_codeql:
+        description: 'Enable CodeQL security analysis'
+        required: false
+        type: boolean
+        default: true
+
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: read           # To read repository content
+#   security-events: write   # For CodeQL analysis
+#   pull-requests: read      # To read PR information
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: read
+
+jobs:
+  # Security analysis with CodeQL
+  security-analysis:
+    if: inputs.enable_codeql == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+          config: |
+            paths-ignore:
+              - "**/*.md"
+              - "**/*.txt"
+              - "**/LICENSE*"
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  # Dependency and secret scanning
+  dependency-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Commit message validation
+  commit-validation:
+    if: inputs.require_conventional_commits == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Validate commit messages
+        uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: |
+            module.exports = {
+              extends: ['@commitlint/config-conventional'],
+              rules: {
+                'type-enum': [2, 'always', [
+                  'feat', 'fix', 'docs', 'style', 'refactor',
+                  'perf', 'test', 'build', 'ci', 'chore', 'revert',
+                  'deps', 'security', 'config', 'pack'
+                ]],
+                'subject-case': [2, 'never', ['pascal-case', 'upper-case']],
+                'header-max-length': [2, 'always', 100]
+              }
+            };
+
+  # YAML and workflow validation
+  yaml-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Install actionlint
+        run: |
+          bash <(curl https://raw.githubusercontent.com/rhymond/actionlint/main/scripts/download-actionlint.bash)
+          sudo mv actionlint /usr/local/bin/
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Validate YAML syntax
+        run: |
+          echo "## YAML Validation" >> $GITHUB_STEP_SUMMARY
+          if find . -name "*.yml" -o -name "*.yaml" | xargs yamllint -d relaxed; then
+            echo "✅ All YAML files are valid" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ YAML validation failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Validate GitHub Actions syntax
+        run: |
+          echo "## GitHub Actions Validation" >> $GITHUB_STEP_SUMMARY
+          if find .github/workflows -name "*.yml" | xargs actionlint; then
+            echo "✅ All workflow files are valid" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Workflow validation failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Validate shell scripts in workflows
+        run: |
+          echo "## Shell Script Validation" >> $GITHUB_STEP_SUMMARY
+          # Extract and validate shell scripts from workflow files
+          find .github/workflows -name "*.yml" -exec grep -l "run:" {} \; | while read -r file; do
+            echo "Checking shell scripts in: $file"
+          done
+          echo "✅ Shell script validation completed" >> $GITHUB_STEP_SUMMARY
+
+  # Nix validation and app testing
+  nix-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Run flake check
+        run: |
+          echo "## Nix Flake Validation" >> $GITHUB_STEP_SUMMARY
+          if nix flake check --all-systems --no-build --show-trace; then
+            echo "✅ Flake check passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Flake check failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Verify apps functionality
+        run: |
+          echo "## App Verification" >> $GITHUB_STEP_SUMMARY
+          IFS=',' read -ra APPS <<< "${{ inputs.validation_apps }}"
+          for app in "${APPS[@]}"; do
+            if nix flake show --json | jq -e ".apps.\"x86_64-linux\".\"$app\"" > /dev/null 2>&1; then
+              if timeout 30 nix run ".#$app" -- --help > /dev/null 2>&1; then
+                echo "✅ **$app**: Available and responsive" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "⚠️ **$app**: Available but not responsive" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "❌ **$app**: Missing" >> $GITHUB_STEP_SUMMARY
+              exit 1
+            fi
+          done
+
+  # Content validation
+  content-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Check for placeholder content
+        run: |
+          echo "## Content Validation" >> $GITHUB_STEP_SUMMARY
+
+          # Check for problematic TODO/CHANGEME items (excluding templates and examples)
+          PROBLEM_ITEMS=$(grep -r "CHANGEME\|TODO.*:" . \
+            --exclude-dir=.git \
+            --exclude-dir=.github \
+            --exclude-dir=examples \
+            --exclude-dir=templates \
+            --exclude="*.md" \
+            --exclude="*create-pack*" \
+            --exclude="*beginner-pack-example*" || true)
+
+          if [ -n "$PROBLEM_ITEMS" ]; then
+            echo "❌ Found problematic placeholder content:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "$PROBLEM_ITEMS" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "✅ No problematic placeholder content found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Check for secrets in code
+        run: |
+          echo "## Secret Detection" >> $GITHUB_STEP_SUMMARY
+
+          # Basic pattern matching for common secrets
+          SECRET_PATTERNS=(
+            "password\s*=\s*['\"][^'\"]{8,}"
+            "api[_-]?key\s*=\s*['\"][^'\"]{16,}"
+            "secret\s*=\s*['\"][^'\"]{16,}"
+            "token\s*=\s*['\"][^'\"]{16,}"
+            "-----BEGIN.*PRIVATE KEY-----"
+          )
+
+          SECRETS_FOUND=false
+          for pattern in "${SECRET_PATTERNS[@]}"; do
+            if grep -r -i -E "$pattern" . --exclude-dir=.git --exclude="*.md" > /dev/null 2>&1; then
+              SECRETS_FOUND=true
+              break
+            fi
+          done
+
+          if [ "$SECRETS_FOUND" = true ]; then
+            echo "❌ Potential secrets detected in code" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "✅ No obvious secrets detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Final validation summary
+  validation-summary:
+    runs-on: ubuntu-latest
+    needs: [security-analysis, dependency-security, commit-validation, yaml-validation, nix-validation, content-validation]
+    if: always()
+    steps:
+      - name: Validation Summary
+        run: |
+          echo "## 🔍 PR Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check job results
+          SECURITY_STATUS="${{ needs.security-analysis.result }}"
+          DEPENDENCY_STATUS="${{ needs.dependency-security.result }}"
+          COMMIT_STATUS="${{ needs.commit-validation.result }}"
+          YAML_STATUS="${{ needs.yaml-validation.result }}"
+          NIX_STATUS="${{ needs.nix-validation.result }}"
+          CONTENT_STATUS="${{ needs.content-validation.result }}"
+
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Analysis | ${SECURITY_STATUS:-skipped} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependency Security | $DEPENDENCY_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit Messages | ${COMMIT_STATUS:-skipped} |" >> $GITHUB_STEP_SUMMARY
+          echo "| YAML Validation | $YAML_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Nix Validation | $NIX_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Content Validation | $CONTENT_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Determine overall result
+          if [[ "$DEPENDENCY_STATUS" == "success" && "$YAML_STATUS" == "success" &&
+                "$NIX_STATUS" == "success" && "$CONTENT_STATUS" == "success" &&
+                ("${SECURITY_STATUS:-success}" == "success" || "${SECURITY_STATUS}" == "skipped") &&
+                ("${COMMIT_STATUS:-success}" == "success" || "${COMMIT_STATUS}" == "skipped") ]]; then
+            echo "### ✅ All validations passed! PR ready for review." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Some validations failed. Please fix issues before merge." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi

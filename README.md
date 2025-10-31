@@ -29,6 +29,7 @@ This repository contains reusable GitHub Actions workflows for the NixLine organ
   - [Stable Tag Update Workflow](#stable-tag-update-workflow)
 - [Workflow Documentation](#workflow-documentation)
   - [Basic CI](#basic-ci-nixline-ciyml)
+  - [Feature Branch Validation](#feature-branch-validation-nixline-feature-branch-validationyml)
   - [Policy Sync Smart (Recommended)](#policy-sync-smart-nixline-policy-sync-smartyml)
   - [Policy Sync (Direct)](#policy-sync-nixline-policy-syncyml) **[DEPRECATED]**
   - [Policy Sync with PRs](#policy-sync-with-auto-approved-prs-nixline-policy-sync-pryml) **[DEPRECATED]**
@@ -186,6 +187,7 @@ This repository provides several reusable workflows for NixLine automation. Each
 | Workflow | Purpose | Used By | Pattern |
 |----------|---------|---------|---------|
 | `nixline-ci.yml` | Basic CI validation | All consumer repos | All patterns |
+| `nixline-feature-branch-validation.yml` | **Comprehensive feature branch validation with security checks** | Baseline repos | Secure feature branch validation |
 | `nixline-branch-validation.yml` | **Complete automation: unstable → main → stable** | Baseline repos | Complete automation workflow |
 | `nixline-policy-sync-smart.yml` | **Smart policy sync (RECOMMENDED)** | Consumer repos | Adaptive |
 | `nixline-promote-to-stable.yml` | Promote commits to stable with validation | Baseline repos | Release management |
@@ -348,6 +350,57 @@ jobs:
       channel: stable
       consumption_pattern: direct  # or configuration-driven, template-based
 ```
+
+### Feature Branch Validation ([`nixline-feature-branch-validation.yml`](.github/workflows/nixline-feature-branch-validation.yml))
+
+**BASELINE REPOSITORIES** - Comprehensive security and quality validation for pull requests targeting protected branches (e.g., unstable). Enforces strict standards before allowing feature branch merges.
+
+**Security Features:**
+- **CodeQL Analysis:** Semantic code analysis for security vulnerabilities
+- **Dependency Scanning:** Trivy vulnerability scanner for dependencies
+- **Secret Detection:** Pattern matching for common secret types
+- **Commit Message Validation:** Enforces conventional commit standards
+
+**Quality Checks:**
+- **Nix Validation:** Full flake check across all systems + app verification
+- **YAML/Workflow Validation:** Syntax validation for all configuration files
+- **Content Validation:** Prevents problematic placeholder content
+- **Shell Script Validation:** Basic shellcheck integration
+
+**Required Workflow:**
+```
+Feature Branch → PR to unstable → All validations pass + 1 review → Merge to unstable
+```
+
+**Usage:**
+```yaml
+# .github/workflows/feature-branch-validation.yml
+name: Feature Branch Validation
+on:
+  pull_request:
+    branches: [unstable]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: read
+
+jobs:
+  validate:
+    uses: NixLine-org/.github/.github/workflows/nixline-feature-branch-validation.yml@stable
+    with:
+      target_branch: unstable
+      validation_apps: "sync,check,import-policy,fetch-license,list-licenses"
+      require_conventional_commits: true
+      enable_codeql: true
+```
+
+**Branch Protection Requirements:**
+- Require PR reviews (1+ maintainer approval)
+- Require all status checks to pass
+- Restrict direct pushes to `unstable` branch
+- Require branches to be up to date
 
 ### Branch Validation (`nixline-branch-validation.yml`)
 

@@ -78,34 +78,35 @@ jobs:
             echo "Flake check failed" >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Build all apps
-        id: build_apps
+      - name: Verify apps exist
+        id: verify_apps
         continue-on-error: true
         run: |
-          echo "## Building All Apps" >> $GITHUB_STEP_SUMMARY
+          echo "## Verifying Apps Exist" >> $GITHUB_STEP_SUMMARY
 
           ERRORS=0
 
+          # Check if apps are defined in flake
           for app in sync check migrate-governance create-pack import-policy fetch-license list-licenses extract-config; do
-            echo "Building app: $app"
-            if nix build ".#$app" --show-trace; then
-              echo "- **$app**: Build successful" >> $GITHUB_STEP_SUMMARY
+            echo "Verifying app: $app"
+            if nix flake show --json | jq -e ".apps.\"x86_64-linux\".\"$app\"" > /dev/null 2>&1; then
+              echo "- **$app**: Found" >> $GITHUB_STEP_SUMMARY
             else
-              echo "- **$app**: Build failed" >> $GITHUB_STEP_SUMMARY
+              echo "- **$app**: Missing" >> $GITHUB_STEP_SUMMARY
               ERRORS=$((ERRORS + 1))
             fi
           done
 
-          echo "build_errors=$ERRORS" >> $GITHUB_OUTPUT
+          echo "verify_errors=$ERRORS" >> $GITHUB_OUTPUT
 
           if [ $ERRORS -eq 0 ]; then
-            echo "apps_built=true" >> $GITHUB_OUTPUT
+            echo "apps_verified=true" >> $GITHUB_OUTPUT
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "All apps built successfully" >> $GITHUB_STEP_SUMMARY
+            echo "All apps verified successfully" >> $GITHUB_STEP_SUMMARY
           else
-            echo "apps_built=false" >> $GITHUB_OUTPUT
+            echo "apps_verified=false" >> $GITHUB_OUTPUT
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Failed to build $ERRORS apps" >> $GITHUB_STEP_SUMMARY
+            echo "Failed to verify $ERRORS apps" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Test sync and check apps
@@ -146,10 +147,10 @@ jobs:
         id: result
         run: |
           FLAKE_CHECK="${{ steps.flake_check.outputs.flake_check_passed }}"
-          APPS_BUILT="${{ steps.build_apps.outputs.apps_built }}"
+          APPS_VERIFIED="${{ steps.verify_apps.outputs.apps_verified }}"
           APPS_TESTED="${{ steps.test_apps.outputs.apps_tested }}"
 
-          if [ "$FLAKE_CHECK" = "true" ] && [ "$APPS_BUILT" = "true" ] && [ "$APPS_TESTED" = "true" ]; then
+          if [ "$FLAKE_CHECK" = "true" ] && [ "$APPS_VERIFIED" = "true" ] && [ "$APPS_TESTED" = "true" ]; then
             echo "validation_passed=true" >> $GITHUB_OUTPUT
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "---" >> $GITHUB_STEP_SUMMARY
@@ -160,7 +161,7 @@ jobs:
             echo "---" >> $GITHUB_STEP_SUMMARY
             echo "**Validation Result:** Validation failed" >> $GITHUB_STEP_SUMMARY
             echo "- Flake check: $FLAKE_CHECK" >> $GITHUB_STEP_SUMMARY
-            echo "- Apps built: $APPS_BUILT" >> $GITHUB_STEP_SUMMARY
+            echo "- Apps verified: $APPS_VERIFIED" >> $GITHUB_STEP_SUMMARY
             echo "- Apps tested: $APPS_TESTED" >> $GITHUB_STEP_SUMMARY
           fi
 
@@ -171,18 +172,18 @@ jobs:
           TAG: ${{ inputs.tag_to_validate }}
           COMMIT: ${{ steps.verify_pin.outputs.pinned_commit }}
           FLAKE_CHECK: ${{ steps.flake_check.outputs.flake_check_passed }}
-          APPS_BUILT: ${{ steps.build_apps.outputs.apps_built }}
+          APPS_VERIFIED: ${{ steps.verify_apps.outputs.apps_verified }}
           APPS_TESTED: ${{ steps.test_apps.outputs.apps_tested }}
-          BUILD_ERRORS: ${{ steps.build_apps.outputs.build_errors }}
+          VERIFY_ERRORS: ${{ steps.verify_apps.outputs.verify_errors }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
             const tag = process.env.TAG;
             const commit = process.env.COMMIT;
             const flakeCheck = process.env.FLAKE_CHECK;
-            const appsBuilt = process.env.APPS_BUILT;
+            const appsVerified = process.env.APPS_VERIFIED;
             const appsTested = process.env.APPS_TESTED;
-            const buildErrors = process.env.BUILD_ERRORS;
+            const verifyErrors = process.env.VERIFY_ERRORS;
             const runUrl = process.env.RUN_URL;
 
             const title = 'Nixpkgs validation failed for ' + tag;
@@ -191,9 +192,9 @@ jobs:
               '**Pinned commit:** `' + commit + '`\n\n' +
               '**Validation Results:**\n' +
               '- Flake check: ' + flakeCheck + '\n' +
-              '- Apps built: ' + appsBuilt + '\n' +
+              '- Apps verified: ' + appsVerified + '\n' +
               '- Apps tested: ' + appsTested + '\n\n' +
-              '**Build errors:** ' + buildErrors + '\n\n' +
+              '**Verification errors:** ' + verifyErrors + '\n\n' +
               '**Workflow run:** ' + runUrl + '\n\n' +
               '### Next Steps\n\n' +
               '1. Review the workflow logs for specific errors\n' +

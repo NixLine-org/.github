@@ -244,6 +244,9 @@ jobs:
           # Delete remote branch if it exists
           git push origin --delete "$BRANCH_NAME" 2>/dev/null || true
 
+          # Remove marker file if it exists to ensure we have a change to commit
+          rm -f .stable-candidate
+
           # Create and push new branch
           git checkout -b "$BRANCH_NAME"
           echo "${{ steps.commit.outputs.commit_hash }}" > .stable-candidate

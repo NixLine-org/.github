@@ -210,10 +210,77 @@ jobs:
               labels: ['automated', 'nixpkgs-update', 'validation-failure']
             });
 
-  promote:
+  create-promotion-pr:
     needs: validate
     if: needs.validate.outputs.validation_passed == 'true' && inputs.promote_on_success
-    uses: NixLine-org/.github/.github/workflows/nixline-nixpkgs-promote.yml@stable
-    with:
-      source_tag: ${{ inputs.tag_to_validate }}
-      target_tag: ${{ inputs.stable_tag }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Get validated commit
+        id: commit
+        run: |
+          VALIDATED_COMMIT=$(git rev-parse ${{ inputs.tag_to_validate }})
+          echo "commit_hash=$VALIDATED_COMMIT" >> $GITHUB_OUTPUT
+          SHORT_HASH="${VALIDATED_COMMIT:0:12}"
+          echo "short_hash=$SHORT_HASH" >> $GITHUB_OUTPUT
+
+      - name: Create marker file
+        run: |
+          echo "${{ steps.commit.outputs.commit_hash }}" > .stable-candidate
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b promote-${{ steps.commit.outputs.short_hash }}
+          git add .stable-candidate
+          git commit -m "Mark ${{ steps.commit.outputs.short_hash }} as stable candidate"
+          git push origin promote-${{ steps.commit.outputs.short_hash }}
+
+      - name: Create pull request
+        uses: actions/github-script@v7
+        env:
+          COMMIT: ${{ steps.commit.outputs.commit_hash }}
+          SHORT_HASH: ${{ steps.commit.outputs.short_hash }}
+          TAG: ${{ inputs.tag_to_validate }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const commit = process.env.COMMIT;
+            const shortHash = process.env.SHORT_HASH;
+            const tag = process.env.TAG;
+            const runUrl = process.env.RUN_URL;
+
+            const title = 'Promote ' + tag + ' to stable (' + shortHash + ')';
+            const body = '## Validation Passed\n\n' +
+              'The validation workflow has successfully validated commit `' + commit + '`.\n\n' +
+              '**Tag:** `' + tag + '`\n' +
+              '**Commit:** `' + commit + '`\n\n' +
+              '### Validation Results\n\n' +
+              '- ✓ Nixpkgs pinning verified\n' +
+              '- ✓ Flake check passed (all systems)\n' +
+              '- ✓ Apps verified\n' +
+              '- ✓ Apps tested\n\n' +
+              '**Validation workflow:** ' + runUrl + '\n\n' +
+              '### Next Steps\n\n' +
+              '1. Review the validation results\n' +
+              '2. Merge this PR to promote to stable\n' +
+              '3. The stable tag will be automatically updated on merge\n\n' +
+              '---\n\n' +
+              '*Merging this PR will update the `stable` tag to point to `' + commit + '`.*';
+
+            await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              head: 'promote-' + shortHash,
+              base: 'main',
+              labels: ['automated', 'promote-to-stable']
+            });

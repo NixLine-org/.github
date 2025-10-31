@@ -68,11 +68,11 @@ jobs:
         run: |
           echo "## Running Flake Check" >> $GITHUB_STEP_SUMMARY
 
-          nix flake check --show-trace
+          nix flake check --all-systems --show-trace
 
           if [ $? -eq 0 ]; then
             echo "flake_check_passed=true" >> $GITHUB_OUTPUT
-            echo "Flake check passed" >> $GITHUB_STEP_SUMMARY
+            echo "Flake check passed for all systems" >> $GITHUB_STEP_SUMMARY
           else
             echo "flake_check_passed=false" >> $GITHUB_OUTPUT
             echo "Flake check failed" >> $GITHUB_STEP_SUMMARY

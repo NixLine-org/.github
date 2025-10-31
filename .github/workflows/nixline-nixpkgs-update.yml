@@ -71,11 +71,22 @@ jobs:
 
           COMMIT_HASH="${{ steps.fetch.outputs.commit_hash }}"
 
-          # Replace branch reference with commit hash in flake.nix
+          # Replace branch reference with commit hash in root flake.nix
           sed -i "s|github:NixOS/nixpkgs/[^\"]*|github:NixOS/nixpkgs/$COMMIT_HASH|g" flake.nix
+
+          # Also update consumer template flake.nix for consistency
+          if [ -f "templates/consumer/flake.nix" ]; then
+            sed -i "s|github:NixOS/nixpkgs/[^\"]*|github:NixOS/nixpkgs/$COMMIT_HASH|g" templates/consumer/flake.nix
+            echo "Updated consumer template as well" >> $GITHUB_STEP_SUMMARY
+          fi
 
           echo "\`\`\`diff" >> $GITHUB_STEP_SUMMARY
           git diff flake.nix >> $GITHUB_STEP_SUMMARY
+          if [ -f "templates/consumer/flake.nix" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "templates/consumer/flake.nix:" >> $GITHUB_STEP_SUMMARY
+            git diff templates/consumer/flake.nix >> $GITHUB_STEP_SUMMARY
+          fi
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Update flake.lock
@@ -113,6 +124,9 @@ jobs:
           SHORT_HASH="${COMMIT_HASH:0:12}"
 
           git add flake.nix flake.lock
+          if [ -f "templates/consumer/flake.nix" ]; then
+            git add templates/consumer/flake.nix
+          fi
 
           git commit -m "Update nixpkgs to $SHORT_HASH from ${{ inputs.nixpkgs_channel }}"
 

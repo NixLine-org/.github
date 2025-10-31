@@ -156,6 +156,68 @@ jobs:
             echo "This is a warning only and does not fail the build" >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Validate CODEOWNERS file
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## CODEOWNERS Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f ".github/CODEOWNERS" ]; then
+            echo "### Syntax Check" >> $GITHUB_STEP_SUMMARY
+
+            # Check for basic syntax issues
+            SYNTAX_ERRORS=false
+
+            # Check for invalid @ references (common mistake)
+            if grep -n "@@" .github/CODEOWNERS > /dev/null 2>&1; then
+              echo "[FAIL] Double @ symbols found in CODEOWNERS" >> $GITHUB_STEP_SUMMARY
+              SYNTAX_ERRORS=true
+            fi
+
+            # Check for lines that don't start with # or pattern
+            if grep -v "^#" .github/CODEOWNERS | grep -v "^$" | grep -v "^[*./]" > /dev/null 2>&1; then
+              echo "[FAIL] Invalid pattern format in CODEOWNERS" >> $GITHUB_STEP_SUMMARY
+              SYNTAX_ERRORS=true
+            fi
+
+            # Enhanced validation for team/user references
+            if command -v gh >/dev/null 2>&1; then
+              echo "### GitHub Team/User Validation" >> $GITHUB_STEP_SUMMARY
+
+              # Extract team references from CODEOWNERS
+              TEAM_REFS=$(grep -o "@[^/]*/[^[:space:]]*" .github/CODEOWNERS || true)
+              USER_REFS=$(grep -o "@[^/[:space:]]*" .github/CODEOWNERS | grep -v "/" || true)
+
+              # Check team references
+              if [ -n "$TEAM_REFS" ]; then
+                echo "Checking team references:" >> $GITHUB_STEP_SUMMARY
+                for team_ref in $TEAM_REFS; do
+                  echo "- $team_ref" >> $GITHUB_STEP_SUMMARY
+                done
+                echo "[INFO] Team validation requires proper org visibility and write access" >> $GITHUB_STEP_SUMMARY
+              fi
+
+              # Check user references
+              if [ -n "$USER_REFS" ]; then
+                echo "Checking user references:" >> $GITHUB_STEP_SUMMARY
+                for user_ref in $USER_REFS; do
+                  echo "- $user_ref" >> $GITHUB_STEP_SUMMARY
+                done
+              fi
+
+              echo "[INFO] Manual review: Ensure all referenced teams/users exist and have appropriate access" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if [ "$SYNTAX_ERRORS" = false ]; then
+              echo "**PASSED** - CODEOWNERS syntax appears valid" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "**FAILED** - CODEOWNERS has syntax errors" >> $GITHUB_STEP_SUMMARY
+              exit 1
+            fi
+          else
+            echo "[INFO] No CODEOWNERS file found" >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Validation summary
         if: success()
         run: |

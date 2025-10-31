@@ -140,9 +140,9 @@ jobs:
         run: |
           echo "## YAML Validation" >> $GITHUB_STEP_SUMMARY
           if find . -name "*.yml" -o -name "*.yaml" | xargs yamllint -d relaxed; then
-            echo "✅ All YAML files are valid" >> $GITHUB_STEP_SUMMARY
+            echo "[PASS] All YAML files are valid" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ YAML validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "[FAIL] YAML validation failed" >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
 
@@ -150,9 +150,9 @@ jobs:
         run: |
           echo "## GitHub Actions Validation" >> $GITHUB_STEP_SUMMARY
           if find .github/workflows -name "*.yml" | xargs actionlint; then
-            echo "✅ All workflow files are valid" >> $GITHUB_STEP_SUMMARY
+            echo "[PASS] All workflow files are valid" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Workflow validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "[FAIL] Workflow validation failed" >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
 
@@ -163,7 +163,7 @@ jobs:
           find .github/workflows -name "*.yml" -exec grep -l "run:" {} \; | while read -r file; do
             echo "Checking shell scripts in: $file"
           done
-          echo "✅ Shell script validation completed" >> $GITHUB_STEP_SUMMARY
+          echo "[PASS] Shell script validation completed" >> $GITHUB_STEP_SUMMARY
 
   # Nix validation and app testing
   nix-validation:
@@ -184,9 +184,9 @@ jobs:
         run: |
           echo "## Nix Flake Validation" >> $GITHUB_STEP_SUMMARY
           if nix flake check --all-systems --no-build --show-trace; then
-            echo "✅ Flake check passed" >> $GITHUB_STEP_SUMMARY
+            echo "[PASS] Flake check passed" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Flake check failed" >> $GITHUB_STEP_SUMMARY
+            echo "[FAIL] Flake check failed" >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
 
@@ -197,12 +197,12 @@ jobs:
           for app in "${APPS[@]}"; do
             if nix flake show --json | jq -e ".apps.\"x86_64-linux\".\"$app\"" > /dev/null 2>&1; then
               if timeout 30 nix run ".#$app" -- --help > /dev/null 2>&1; then
-                echo "✅ **$app**: Available and responsive" >> $GITHUB_STEP_SUMMARY
+                echo "[PASS] **$app**: Available and responsive" >> $GITHUB_STEP_SUMMARY
               else
-                echo "⚠️ **$app**: Available but not responsive" >> $GITHUB_STEP_SUMMARY
+                echo "[WARN] **$app**: Available but not responsive" >> $GITHUB_STEP_SUMMARY
               fi
             else
-              echo "❌ **$app**: Missing" >> $GITHUB_STEP_SUMMARY
+              echo "[FAIL] **$app**: Missing" >> $GITHUB_STEP_SUMMARY
               exit 1
             fi
           done
@@ -229,13 +229,13 @@ jobs:
             --exclude="*beginner-pack-example*" || true)
 
           if [ -n "$PROBLEM_ITEMS" ]; then
-            echo "❌ Found problematic placeholder content:" >> $GITHUB_STEP_SUMMARY
+            echo "[FAIL] Found problematic placeholder content:" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "$PROBLEM_ITEMS" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             exit 1
           else
-            echo "✅ No problematic placeholder content found" >> $GITHUB_STEP_SUMMARY
+            echo "[PASS] No problematic placeholder content found" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Check for secrets in code
@@ -260,10 +260,10 @@ jobs:
           done
 
           if [ "$SECRETS_FOUND" = true ]; then
-            echo "❌ Potential secrets detected in code" >> $GITHUB_STEP_SUMMARY
+            echo "[FAIL] Potential secrets detected in code" >> $GITHUB_STEP_SUMMARY
             exit 1
           else
-            echo "✅ No obvious secrets detected" >> $GITHUB_STEP_SUMMARY
+            echo "[PASS] No obvious secrets detected" >> $GITHUB_STEP_SUMMARY
           fi
 
   # Final validation summary
@@ -274,7 +274,7 @@ jobs:
     steps:
       - name: Validation Summary
         run: |
-          echo "## 🔍 PR Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## Feature Branch Validation Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Check job results
@@ -300,8 +300,8 @@ jobs:
                 "$NIX_STATUS" == "success" && "$CONTENT_STATUS" == "success" &&
                 ("${SECURITY_STATUS:-success}" == "success" || "${SECURITY_STATUS}" == "skipped") &&
                 ("${COMMIT_STATUS:-success}" == "success" || "${COMMIT_STATUS}" == "skipped") ]]; then
-            echo "### ✅ All validations passed! PR ready for review." >> $GITHUB_STEP_SUMMARY
+            echo "### [PASS] All validations passed! PR ready for review." >> $GITHUB_STEP_SUMMARY
           else
-            echo "### ❌ Some validations failed. Please fix issues before merge." >> $GITHUB_STEP_SUMMARY
+            echo "### [FAIL] Some validations failed. Please fix issues before merge." >> $GITHUB_STEP_SUMMARY
             exit 1
           fi

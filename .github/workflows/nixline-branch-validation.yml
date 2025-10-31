@@ -9,6 +9,8 @@
 # - Always updates unstable tag (immediate testing availability)
 # - Runs comprehensive validation (flake check, apps, content validation)
 # - Creates/updates PRs automatically when validation passes
+# - Adds promote-to-stable label to validated PRs (enables automatic promotion)
+# - Auto-approves and merges validated PRs to main
 # - Creates/updates issues when validation fails (assigned to branch author)
 # - Manages issue lifecycle (auto-close when tests pass)
 #
@@ -235,6 +237,16 @@ jobs:
 
               console.log(`Updated existing PR #${pr.number}`);
 
+              // Add promote-to-stable label for validated PR
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: ['promote-to-stable']
+              });
+
+              console.log(`Added promote-to-stable label to PR #${pr.number}`);
+
               // Enable auto-merge
               try {
                 await github.rest.pulls.createReview({
@@ -270,6 +282,16 @@ jobs:
               });
 
               console.log(`Created new PR #${newPr.number}`);
+
+              // Add promote-to-stable label for validated PR
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: newPr.number,
+                labels: ['promote-to-stable']
+              });
+
+              console.log(`Added promote-to-stable label to PR #${newPr.number}`);
 
               // Auto-approve and merge
               try {

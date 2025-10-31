@@ -17,6 +17,11 @@ on:
         required: false
         type: string
         default: 'stable'
+      promotion_target:
+        description: 'Promotion target: stable (full audit trail) or unstable (lightweight)'
+        required: false
+        type: string
+        default: 'stable'
 
 # Note: This workflow requires the following permissions:
 # permissions:
@@ -137,7 +142,7 @@ jobs:
           fi
 
       - name: Checkout current main for audit trail
-        if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true'
+        if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true' && inputs.promotion_target == 'stable'
         run: |
           # Switch back to current main branch to create audit trail
           # This prevents race conditions when main has moved forward
@@ -145,7 +150,7 @@ jobs:
           git pull origin main
 
       - name: Update flake.lock and create audit trail
-        if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true'
+        if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true' && inputs.promotion_target == 'stable'
         run: |
           COMMIT=${{ steps.candidate.outputs.commit_hash }}
           SHORT_HASH=${{ steps.candidate.outputs.short_hash }}
@@ -173,10 +178,11 @@ jobs:
           if [[ -f "templates/consumer/flake.lock" ]]; then
             git add templates/consumer/flake.lock
           fi
-          git commit -m "Mark $SHORT_HASH as ${{ inputs.stable_tag }} candidate
+          git commit -m "Mark $SHORT_HASH as ${{ inputs.promotion_target }} candidate
 
           Promoted commit: $COMMIT
           Promotion type: ${{ steps.candidate.outputs.promotion_type }}
+          Promotion target: ${{ inputs.promotion_target }}
           Validation passed: ${{ steps.validate.outputs.validation_passed }}
           Updated flake.lock for consumers"
 
@@ -185,21 +191,22 @@ jobs:
 
           echo "Created audit trail commit for $COMMIT with updated flake.lock"
 
-      - name: Update stable tag
+      - name: Update promotion tag
         if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true'
         run: |
           COMMIT=${{ steps.candidate.outputs.commit_hash }}
+          TARGET_TAG="${{ inputs.promotion_target == 'stable' && inputs.stable_tag || inputs.promotion_target }}"
 
-          # Delete local stable tag if it exists to avoid conflicts
-          git tag -d ${{ inputs.stable_tag }} 2>/dev/null || true
+          # Delete local tag if it exists to avoid conflicts
+          git tag -d "$TARGET_TAG" 2>/dev/null || true
 
-          # Create new stable tag at validated commit
-          git tag -a ${{ inputs.stable_tag }} -m "Promote to stable: $COMMIT" $COMMIT
+          # Create new tag at validated commit
+          git tag -a "$TARGET_TAG" -m "Promote to ${{ inputs.promotion_target }}: $COMMIT" $COMMIT
 
-          # Force push the stable tag (safer than remote delete + create)
-          git push --force origin ${{ inputs.stable_tag }}
+          # Force push the tag (safer than remote delete + create)
+          git push --force origin "$TARGET_TAG"
 
-          echo "Updated ${{ inputs.stable_tag }} tag to $COMMIT"
+          echo "Updated $TARGET_TAG tag to $COMMIT"
 
       - name: Cleanup marker file
         if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true' && steps.candidate.outputs.promotion_type == 'pr'
@@ -295,8 +302,14 @@ jobs:
               echo "**Type:** PR-based promotion" >> $GITHUB_STEP_SUMMARY
             fi
 
-            echo "**${{ inputs.stable_tag }} tag updated to:** \`${{ steps.candidate.outputs.commit_hash }}\`" >> $GITHUB_STEP_SUMMARY
-            echo "**Audit trail:** Commit created in main branch" >> $GITHUB_STEP_SUMMARY
+            TARGET_TAG="${{ inputs.promotion_target == 'stable' && inputs.stable_tag || inputs.promotion_target }}"
+            echo "**$TARGET_TAG tag updated to:** \`${{ steps.candidate.outputs.commit_hash }}\`" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ inputs.promotion_target }}" == "stable" ]; then
+              echo "**Audit trail:** Commit created in main branch" >> $GITHUB_STEP_SUMMARY
+              echo "**flake.lock:** Updated for consumers" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "**Lightweight promotion:** No flake.lock or audit trail updates" >> $GITHUB_STEP_SUMMARY
+            fi
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Consumer repositories will receive this update on their next policy sync." >> $GITHUB_STEP_SUMMARY
           else

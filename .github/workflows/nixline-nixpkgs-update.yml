@@ -1,3 +1,15 @@
+#
+# NixLine Nixpkgs Update (reusable)
+#
+# Updates nixpkgs to latest versions and creates unstable tags for testing.
+# Fetches latest nixpkgs commits and creates tagged versions for
+# organizations to test before promoting to stable.
+#
+# Triggered by: workflow_call from baseline repositories
+# Purpose: Automated nixpkgs version updates and unstable tagging
+# Features: Latest nixpkgs fetching, unstable tag creation, commit tracking
+#
+
 name: NixLine Nixpkgs Update (reusable)
 
 on:

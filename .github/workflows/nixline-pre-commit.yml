@@ -1,3 +1,15 @@
+#
+# NixLine Pre-commit (reusable)
+#
+# Runs pre-commit hooks for code quality and consistency checks.
+# Executes configured pre-commit hooks and optionally auto-commits
+# fixes to maintain code quality standards across repositories.
+#
+# Triggered by: workflow_call from consumer repositories
+# Purpose: Code quality enforcement and automated fixes
+# Features: Pre-commit hook execution, auto-fix commits, quality validation
+#
+
 name: NixLine Pre-commit (reusable)
 
 on:

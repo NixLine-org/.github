@@ -1,3 +1,15 @@
+#
+# NixLine Flake Lock Update (reusable)
+#
+# Updates flake.lock files in specified directories and optionally creates
+# pull requests with the changes. Supports validation after updates and
+# auto-merge functionality for automated dependency management.
+#
+# Triggered by: workflow_call from consumer repositories
+# Purpose: Automated flake.lock maintenance and dependency updates
+# Features: Custom directories, commit messages, validation, PR creation, auto-merge
+#
+
 name: NixLine Flake Lock Update (reusable)
 
 on:

@@ -1,3 +1,15 @@
+#
+# Nix flake.lock updater (reusable)
+#
+# Updates Nix flake.lock files and creates pull requests with the changes.
+# Provides customizable PR titles, labels, and assignee options for
+# automated dependency management in Nix-based projects.
+#
+# Triggered by: workflow_call from consumer repositories
+# Purpose: Automated Nix dependency updates via flake.lock
+# Features: Custom PR titles/labels, assignee support, automated updates
+#
+
 name: Nix flake.lock updater (reusable)
 on:
   workflow_call:

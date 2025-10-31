@@ -1,3 +1,15 @@
+#
+# Policy — flake.lock only (reusable)
+#
+# Validates that only flake.lock files are modified in policy-related commits.
+# Ensures that policy synchronization changes don't accidentally include
+# unauthorized modifications to source files or configurations.
+#
+# Triggered by: workflow_call from consumer repositories
+# Purpose: Policy change validation and safety checks
+# Features: File change validation, flake.lock-only enforcement
+#
+
 name: Policy — flake.lock only (reusable)
 on:
   workflow_call: {}

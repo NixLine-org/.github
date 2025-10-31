@@ -1,3 +1,15 @@
+#
+# NixLine Nixpkgs Promote (reusable)
+#
+# Promotes nixpkgs versions between different stability levels (unstable → stable).
+# Manages nixpkgs version promotion lifecycle for organizations using pinned
+# nixpkgs versions with validation and testing before promotion.
+#
+# Triggered by: workflow_call from baseline repositories
+# Purpose: Controlled nixpkgs version promotion with validation
+# Features: Source tag promotion, target tag creation, validation steps
+#
+
 name: NixLine Nixpkgs Promote (reusable)
 
 on:

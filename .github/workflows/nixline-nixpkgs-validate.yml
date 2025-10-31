@@ -1,3 +1,15 @@
+#
+# NixLine Nixpkgs Validate (reusable)
+#
+# Validates nixpkgs versions before promotion to ensure stability and compatibility.
+# Runs comprehensive testing on specified nixpkgs tags to verify they work
+# correctly with the organization's packages and configurations.
+#
+# Triggered by: workflow_call from baseline repositories
+# Purpose: Nixpkgs version validation before promotion
+# Features: Tag validation, compatibility testing, stability checks
+#
+
 name: NixLine Nixpkgs Validate (reusable)
 
 on:

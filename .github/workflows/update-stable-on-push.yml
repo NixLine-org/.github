@@ -1,3 +1,15 @@
+#
+# Update Stable Tag on Push
+#
+# Automatically updates the stable tag when changes are pushed to main branch.
+# Ensures the stable tag always points to the latest validated changes on
+# the main branch for organization-wide workflow consistency.
+#
+# Triggered by: push to main branch
+# Purpose: Automatic stable tag maintenance
+# Features: Stable tag updates, main branch tracking, workflow version control
+#
+
 name: Update Stable Tag on Push
 
 on:

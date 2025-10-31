@@ -1,0 +1,145 @@
+name: NixLine Promote to Stable (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      promotion_mode:
+        description: 'Promotion mode: pr-based or manual'
+        required: false
+        type: string
+        default: 'pr-based'
+      commit_hash:
+        description: 'Commit hash to promote (for manual mode, defaults to HEAD)'
+        required: false
+        type: string
+      stable_tag:
+        description: 'Target stable tag name'
+        required: false
+        type: string
+        default: 'stable'
+
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write
+#   actions: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Determine promotion commit
+        id: candidate
+        run: |
+          if [ "${{ inputs.promotion_mode }}" == "manual" ]; then
+            # Manual promotion - use provided commit or HEAD
+            if [ -n "${{ inputs.commit_hash }}" ]; then
+              CANDIDATE_COMMIT="${{ inputs.commit_hash }}"
+              echo "Using manual commit: $CANDIDATE_COMMIT"
+            else
+              CANDIDATE_COMMIT=$(git rev-parse HEAD)
+              echo "Using HEAD of main: $CANDIDATE_COMMIT"
+            fi
+            echo "promotion_type=manual" >> $GITHUB_OUTPUT
+          else
+            # PR-based promotion - read from .stable-candidate
+            if [ -f .stable-candidate ]; then
+              CANDIDATE_COMMIT=$(cat .stable-candidate)
+              echo "Using PR promotion commit: $CANDIDATE_COMMIT"
+              echo "promotion_type=pr" >> $GITHUB_OUTPUT
+            else
+              echo "found=false" >> $GITHUB_OUTPUT
+              echo "Error: .stable-candidate file not found for PR-based promotion"
+              exit 1
+            fi
+          fi
+
+          echo "commit_hash=$CANDIDATE_COMMIT" >> $GITHUB_OUTPUT
+          SHORT_HASH="${CANDIDATE_COMMIT:0:12}"
+          echo "short_hash=$SHORT_HASH" >> $GITHUB_OUTPUT
+          echo "found=true" >> $GITHUB_OUTPUT
+
+      - name: Update stable tag
+        if: steps.candidate.outputs.found == 'true'
+        run: |
+          COMMIT=${{ steps.candidate.outputs.commit_hash }}
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Delete local stable tag if it exists to avoid conflicts
+          git tag -d ${{ inputs.stable_tag }} 2>/dev/null || true
+
+          # Create new stable tag at validated commit
+          git tag -a ${{ inputs.stable_tag }} -m "Promote to stable: $COMMIT" $COMMIT
+
+          # Force push the stable tag (safer than remote delete + create)
+          git push --force origin ${{ inputs.stable_tag }}
+
+          echo "Updated ${{ inputs.stable_tag }} tag to $COMMIT"
+
+      - name: Cleanup marker file
+        if: steps.candidate.outputs.found == 'true' && steps.candidate.outputs.promotion_type == 'pr'
+        uses: actions/github-script@v7
+        env:
+          SHORT_HASH: ${{ steps.candidate.outputs.short_hash }}
+        with:
+          script: |
+            const shortHash = process.env.SHORT_HASH;
+
+            try {
+              // Get the current file to get its SHA
+              const file = await github.rest.repos.getContent({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                path: '.stable-candidate',
+                ref: 'main'
+              });
+
+              // Delete the file via API
+              await github.rest.repos.deleteFile({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                path: '.stable-candidate',
+                message: 'Remove stable candidate marker after promotion',
+                sha: file.data.sha,
+                branch: 'main'
+              });
+
+              console.log('Removed .stable-candidate from main');
+            } catch (error) {
+              console.log('Failed to remove .stable-candidate (may not exist): ' + error.message);
+            }
+
+            // Delete promotion branch
+            try {
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: 'heads/promote-' + shortHash
+              });
+              console.log('Deleted promotion branch');
+            } catch (error) {
+              console.log('Failed to delete branch (may not exist): ' + error.message);
+            }
+
+      - name: Summary
+        if: steps.candidate.outputs.found == 'true'
+        run: |
+          echo "## Promotion Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.candidate.outputs.promotion_type }}" == "manual" ]; then
+            echo "**Type:** Manual promotion" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Type:** PR-based promotion" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "**${{ inputs.stable_tag }} tag updated to:** \`${{ steps.candidate.outputs.commit_hash }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Consumer repositories will receive this update on their next policy sync." >> $GITHUB_STEP_SUMMARY

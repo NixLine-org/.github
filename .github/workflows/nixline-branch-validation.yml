@@ -89,8 +89,8 @@ jobs:
           # Create new unstable tag at current commit
           git tag -a unstable -m "Unstable: $BRANCH_NAME branch at ${{ steps.commit.outputs.short_hash }}"
 
-          # Force push the unstable tag
-          git push --force origin unstable
+          # Force push the unstable tag (explicit tag reference)
+          git push --force origin refs/tags/unstable
 
           echo "Updated unstable tag to $COMMIT_HASH from branch $BRANCH_NAME"
 

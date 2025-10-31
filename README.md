@@ -38,6 +38,7 @@ This repository contains reusable GitHub Actions workflows for the NixLine organ
   - [Policy Lock Updates](#policy-lock-updates-nixline-policy-flake-lock-onlyyml)
   - [Pre-commit Hooks](#pre-commit-hooks-nixline-pre-commityml)
   - [Stable Tag Updates](#stable-tag-updates-update-stable-tagyml)
+  - [Workflow Validation](#workflow-validation-validate-workflowsyml)
   - [Flake Lock Updates](#flake-lock-updates-nixline-flake-lock-updateyml)
   - [Governance Migration](#governance-migration-migrate-governanceyml)
   - [Test Governance Migration](#test-governance-migration-test-governance-migrationyml)
@@ -185,7 +186,7 @@ This repository provides several reusable workflows for NixLine automation. Each
 | Workflow | Purpose | Used By | Pattern |
 |----------|---------|---------|---------|
 | `nixline-ci.yml` | Basic CI validation | All consumer repos | All patterns |
-| `nixline-branch-validation.yml` | **Branch validation and auto-promotion** | Baseline repos | Development workflow |
+| `nixline-branch-validation.yml` | **Complete automation: unstable → main → stable** | Baseline repos | Complete automation workflow |
 | `nixline-policy-sync-smart.yml` | **Smart policy sync (RECOMMENDED)** | Consumer repos | Adaptive |
 | `nixline-promote-to-stable.yml` | Promote commits to stable with validation | Baseline repos | Release management |
 | `nixline-policy-sync.yml` | ~~Direct policy sync~~ **DEPRECATED** | Legacy only | Direct commit |
@@ -196,6 +197,7 @@ This repository provides several reusable workflows for NixLine automation. Each
 | `nixline-policy-flake-lock-only.yml` | Policy lock updates | Template-based repos | Template pattern |
 | `nixline-pre-commit.yml` | Pre-commit hooks | Consumer repos | Code formatting |
 | `update-stable-tag.yml` | Auto-update stable tags | Baseline repos | Tag automation |
+| `validate-workflows.yml` | Validate YAML and GitHub Actions syntax | Any repo | Workflow quality control |
 | `nixline-flake-lock-update.yml` | Update flake.lock files | Any repo with flakes | Dependency management |
 | `migrate-governance.yml` | Migrate governance repositories | Organizations | Governance migration |
 | `test-governance-migration.yml` | Test migration compatibility | Governance repos | Migration testing |
@@ -234,36 +236,43 @@ The **branch validation workflow** provides a comprehensive development workflow
 **Key Features:**
 - Always updates unstable tag for immediate testing availability
 - Runs comprehensive validation (flake check, app verification, content validation)
-- Creates and auto-merges PRs when validation passes
+- Creates PRs with promote-to-stable label when validation passes
+- Auto-approves and auto-merges validated PRs to main branch
+- Integrates with baseline CI for automatic stable tag promotion
 - Creates issues when validation fails (assigned to branch author)
 - Manages issue lifecycle (auto-closes when tests pass)
 
 **Flow Diagram:**
 ```mermaid
 graph TD
-    A[Push to Feature Branch] --> B[Update Unstable Tag]
+    A[Push to unstable branch] --> B[Update unstable tag]
     B --> C[Comprehensive Validation]
     C --> D{Validation Passed?}
 
-    D -->|Yes| E[Create/Update PR]
-    E --> F[Auto-Approve PR]
-    F --> G[Auto-Merge to Main]
-    G --> H[Update Stable Tag]
-    H --> I[✅ Complete]
+    D -->|Yes| E[Create PR to main<br/>Add promote-to-stable label]
+    E --> F[Auto-approve PR]
+    F --> G[Auto-merge to main]
+    G --> H[Main Branch CI]
+    H --> I[Update .stable-candidate]
+    I --> J[Trigger stable promotion]
+    J --> K[Update stable tag]
+    K --> L[✅ Complete Pipeline]
 
-    D -->|No| J[Create/Update Issue]
-    J --> K[Assign to Branch Author]
-    K --> L[Manual Fix Required]
-    L --> M[Push Fix]
-    M --> C
+    D -->|No| M[Create/Update Issue]
+    M --> N[Assign to branch author]
+    N --> O[Manual fix required]
+    O --> P[Push fix to unstable]
+    P --> C
 
-    I --> N[Close Any Open Issues]
+    L --> Q[Close any open issues]
 
     style D fill:#fff3cd
     style E fill:#e1f5fe
-    style G fill:#c8e6c9
-    style I fill:#d4edda
-    style J fill:#ffcdd2
+    style G fill:#4CAF50
+    style J fill:#4CAF50
+    style K fill:#4CAF50
+    style L fill:#d4edda
+    style M fill:#ffcdd2
 ```
 
 **Usage in Baseline Repository:**
@@ -289,23 +298,26 @@ jobs:
 ```
 
 **Development Workflow:**
-1. **Create Feature Branch**: `git checkout -b feature/new-pack`
+1. **Work on unstable branch**: `git checkout unstable` (primary development branch)
 2. **Make Changes**: Modify packs, apps, or configuration
-3. **Push to Branch**: `git push origin feature/new-pack`
-4. **Automatic Process**:
+3. **Push to unstable**: `git push origin unstable`
+4. **Complete Automation**:
    - Unstable tag updates immediately (available for testing)
    - Validation runs (flake check, app tests, content validation)
-   - If tests pass: PR created and auto-merged to main
+   - If tests pass: PR created with promote-to-stable label and auto-merged to main
+   - Main branch CI updates .stable-candidate and triggers stable promotion
    - If tests fail: Issue created and assigned to you
-5. **Fix Issues**: Address any validation failures and push fixes
-6. **Automatic Completion**: Once validation passes, PR is created and merged
+5. **Fix Issues**: Address any validation failures and push fixes to unstable
+6. **Automatic Completion**: Complete pipeline from unstable → main → stable with no manual steps
 
 **Benefits:**
+- **Complete Automation**: Zero manual steps from development to production
 - **Protected Main Branch**: All changes validated before merge
 - **Immediate Testing**: Unstable tag allows testing changes instantly
-- **Developer-Friendly**: Automatic PR creation when tests pass
-- **Clear Failure Handling**: Issues created with detailed error information
-- **Audit Trail**: Full PR history maintained for all changes
+- **Developer-Friendly**: Automatic promotion through entire pipeline when tests pass
+- **Fast Feedback**: Issues created with detailed error information for failures
+- **Full Audit Trail**: PR history with promote-to-stable labels maintained for all changes
+- **Stable Tag Automation**: Automatic stable tag updates when main branch CI passes
 
 ---
 
@@ -1003,6 +1015,48 @@ jobs:
 When using this workflow, always enable branch protection on your main branch. The stable tag automatically updates to point to the latest main commit, so any direct push to main would immediately be tagged as "stable" and potentially deployed to production or consumed by other repositories.
 
 Configure branch protection to require pull request reviews before merging, dismiss stale reviews when new commits are pushed, require status checks to pass, and include administrators in restrictions. This ensures all changes go through proper review before being automatically tagged as stable.
+
+---
+
+### Workflow Validation (`validate-workflows.yml`)
+
+Validates all workflow files for YAML syntax, GitHub Actions syntax, and shell scripts. This workflow runs automatically in the .github repository and can be used as a reusable workflow by other repositories.
+
+**Features:**
+- YAML syntax validation with yamllint
+- GitHub Actions syntax validation with actionlint
+- Shell script validation within workflows
+- Permissions documentation checks for reusable workflows
+- Baseline workflow pattern validation
+
+**Usage as Reusable Workflow:**
+```yaml
+# .github/workflows/validate-workflows.yml
+name: Validate Workflows
+on:
+  push:
+    paths:
+      - '.github/workflows/*.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/*.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    uses: YOUR-ORG/.github/.github/workflows/validate-workflows.yml@stable
+```
+
+**Automatic Usage:**
+The workflow automatically runs in the .github repository on every push and pull request to validate all reusable workflows before they're deployed organization-wide.
+
+**Benefits:**
+- Prevents broken workflows from being deployed
+- Ensures consistent quality across all organization workflows
+- Validates shell scripts and permissions documentation
+- Catches syntax errors before they affect consumer repositories
 
 ---
 

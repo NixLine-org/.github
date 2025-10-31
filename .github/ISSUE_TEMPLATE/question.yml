@@ -1,0 +1,136 @@
+name: Question
+description: Ask a question about using NixLine
+title: "[QUESTION] "
+labels: ["question", "needs-triage"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for your question! Please provide as much context as possible to help us give you the best answer.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight Checklist
+      description: Please verify you have completed the following before asking
+      options:
+        - label: I have searched existing issues and discussions
+          required: true
+        - label: I have read the relevant documentation
+          required: true
+        - label: This is a question, not a bug report or feature request
+          required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Question Category
+      description: What is your question about?
+      options:
+        - Getting Started
+        - Configuration (.nixline.toml)
+        - Consumption Patterns (direct, template-based)
+        - Policy Packs
+        - Migration from existing governance
+        - CI/CD Integration
+        - Security Best Practices
+        - Troubleshooting
+        - Architecture/Design
+        - Contributing
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: experience
+    attributes:
+      label: Experience Level
+      description: How familiar are you with NixLine?
+      options:
+        - New to NixLine
+        - Basic understanding
+        - Intermediate user
+        - Advanced user
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What would you like to know?
+      placeholder: |
+        I'm trying to understand...
+        How do I configure...
+        What's the best way to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Provide relevant background about your situation
+      placeholder: |
+        I'm working on...
+        My organization has...
+        I'm currently using...
+
+  - type: dropdown
+    id: consumption
+    attributes:
+      label: Consumption Pattern
+      description: How are you using NixLine? (if applicable)
+      options:
+        - Direct Consumption (github:org/baseline#sync)
+        - Configuration-Driven (.nixline.toml)
+        - Template-Based (flake.nix)
+        - Planning to use NixLine
+        - Not applicable
+    validations:
+      required: false
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What Have You Tried?
+      description: What approaches have you already attempted?
+      placeholder: |
+        I tried...
+        I looked at...
+        I attempted to configure...
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: What Are You Trying to Achieve?
+      description: What is your end goal or desired outcome?
+      placeholder: |
+        I want to be able to...
+        I'm trying to set up...
+        My goal is to...
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant Configuration
+      description: Share any relevant configuration files or commands
+      render: toml
+      placeholder: |
+        # .nixline.toml
+        [organization]
+        name = "..."
+
+  - type: input
+    id: version
+    attributes:
+      label: NixLine Version
+      description: What version are you using?
+      placeholder: "stable, unstable, or commit hash"
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Details
+      description: Any other information that might be helpful

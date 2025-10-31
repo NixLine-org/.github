@@ -1,0 +1,149 @@
+name: Feature Request
+description: Suggest an idea or enhancement for NixLine
+title: "[FEATURE] "
+labels: ["enhancement", "needs-triage"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! Please provide as much detail as possible to help us understand and prioritize your request.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight Checklist
+      description: Please verify you have completed the following before submitting
+      options:
+        - label: I have searched existing issues and this is not a duplicate
+          required: true
+        - label: I have read the documentation and this feature doesn't already exist
+          required: true
+        - label: This is a feature request, not a bug report or question
+          required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component would this feature affect?
+      options:
+        - NixLine Baseline
+        - Reusable Workflows
+        - Policy Packs
+        - Sync App
+        - Migration Tools
+        - Documentation
+        - New Component
+        - Organization-wide
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to you?
+      options:
+        - Critical (blocking major use case)
+        - High (would significantly improve workflow)
+        - Medium (nice to have improvement)
+        - Low (minor enhancement)
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? What workflow is currently difficult or impossible?
+      placeholder: |
+        I'm always frustrated when...
+        Currently, there's no way to...
+        It would be helpful if...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like to see
+      placeholder: |
+        I would like NixLine to support...
+        The feature should work like...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Describe any alternative solutions or workarounds you've considered
+      placeholder: |
+        I considered using...
+        Another approach could be...
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact Scope
+      description: Who would benefit from this feature?
+      options:
+        - All NixLine users
+        - Organizations using baseline repositories
+        - Organizations using direct consumption
+        - Organizations using template pattern
+        - Developers working on NixLine itself
+        - Specific use case (explain below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: Use Cases
+      description: Provide specific examples of how this feature would be used
+      placeholder: |
+        Use case 1: When setting up a new repository...
+        Use case 2: During policy updates...
+        Use case 3: For compliance requirements...
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: What would make this feature complete? How would you test it?
+      placeholder: |
+        - [ ] Feature works with direct consumption pattern
+        - [ ] Feature works with template pattern
+        - [ ] Documentation is updated
+        - [ ] Tests cover the new functionality
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Breaking Change
+      description: Would this feature require breaking changes to existing functionality?
+      options:
+        - No breaking changes
+        - Minor breaking changes (acceptable)
+        - Major breaking changes (needs careful consideration)
+        - Unknown/Unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation Ideas
+      description: If you have ideas about how this could be implemented, share them here
+      placeholder: |
+        This could be implemented by...
+        We might need to modify...
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Add any other context, mockups, or examples about the feature request

@@ -20,6 +20,7 @@ This repository contains reusable GitHub Actions workflows for the NixLine organ
 - [Security & Permissions](#security--permissions)
 - [Available Workflows](#available-workflows)
 - [Workflow Diagrams](#workflow-diagrams)
+  - [Branch Validation Workflow](#branch-validation-workflow)
   - [Policy Sync Workflow Comparison](#policy-sync-workflow-comparison)
   - [CI Workflow](#ci-workflow)
   - [Pre-commit Hooks Workflow](#pre-commit-hooks-workflow)
@@ -184,7 +185,9 @@ This repository provides several reusable workflows for NixLine automation. Each
 | Workflow | Purpose | Used By | Pattern |
 |----------|---------|---------|---------|
 | `nixline-ci.yml` | Basic CI validation | All consumer repos | All patterns |
+| `nixline-branch-validation.yml` | **Branch validation and auto-promotion** | Baseline repos | Development workflow |
 | `nixline-policy-sync-smart.yml` | **Smart policy sync (RECOMMENDED)** | Consumer repos | Adaptive |
+| `nixline-promote-to-stable.yml` | Promote commits to stable with validation | Baseline repos | Release management |
 | `nixline-policy-sync.yml` | ~~Direct policy sync~~ **DEPRECATED** | Legacy only | Direct commit |
 | `nixline-policy-sync-pr.yml` | ~~Policy sync with PRs~~ **DEPRECATED** | Legacy only | Auto-approved PRs |
 | `nixline-auto-approve.yml` | Auto-approve PRs | Consumer repos | Auto-approved PRs |
@@ -224,6 +227,86 @@ graph TD
     style J fill:#f8d7da
 ```
 
+### Branch Validation Workflow
+
+The **branch validation workflow** provides a comprehensive development workflow for baseline repositories. It enables teams to work on feature branches while maintaining main branch protection through automated validation and promotion.
+
+**Key Features:**
+- Always updates unstable tag for immediate testing availability
+- Runs comprehensive validation (flake check, app verification, content validation)
+- Creates and auto-merges PRs when validation passes
+- Creates issues when validation fails (assigned to branch author)
+- Manages issue lifecycle (auto-closes when tests pass)
+
+**Flow Diagram:**
+```mermaid
+graph TD
+    A[Push to Feature Branch] --> B[Update Unstable Tag]
+    B --> C[Comprehensive Validation]
+    C --> D{Validation Passed?}
+
+    D -->|Yes| E[Create/Update PR]
+    E --> F[Auto-Approve PR]
+    F --> G[Auto-Merge to Main]
+    G --> H[Update Stable Tag]
+    H --> I[✅ Complete]
+
+    D -->|No| J[Create/Update Issue]
+    J --> K[Assign to Branch Author]
+    K --> L[Manual Fix Required]
+    L --> M[Push Fix]
+    M --> C
+
+    I --> N[Close Any Open Issues]
+
+    style D fill:#fff3cd
+    style E fill:#e1f5fe
+    style G fill:#c8e6c9
+    style I fill:#d4edda
+    style J fill:#ffcdd2
+```
+
+**Usage in Baseline Repository:**
+```yaml
+# .github/workflows/branch-validation.yml
+name: Branch Validation
+on:
+  push:
+    branches-ignore: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  validate:
+    uses: YOUR-ORG/.github/.github/workflows/nixline-branch-validation.yml@stable
+    with:
+      baseline_repo: YOUR-ORG/nixline-baseline
+      validation_apps: "sync,check,import-policy,fetch-license,list-licenses"
+      issue_labels: "validation-failure,automated"
+```
+
+**Development Workflow:**
+1. **Create Feature Branch**: `git checkout -b feature/new-pack`
+2. **Make Changes**: Modify packs, apps, or configuration
+3. **Push to Branch**: `git push origin feature/new-pack`
+4. **Automatic Process**:
+   - Unstable tag updates immediately (available for testing)
+   - Validation runs (flake check, app tests, content validation)
+   - If tests pass: PR created and auto-merged to main
+   - If tests fail: Issue created and assigned to you
+5. **Fix Issues**: Address any validation failures and push fixes
+6. **Automatic Completion**: Once validation passes, PR is created and merged
+
+**Benefits:**
+- **Protected Main Branch**: All changes validated before merge
+- **Immediate Testing**: Unstable tag allows testing changes instantly
+- **Developer-Friendly**: Automatic PR creation when tests pass
+- **Clear Failure Handling**: Issues created with detailed error information
+- **Audit Trail**: Full PR history maintained for all changes
+
 ---
 
 ## Workflow Documentation
@@ -247,6 +330,53 @@ jobs:
       channel: stable
       consumption_pattern: direct  # or configuration-driven, template-based
 ```
+
+### Branch Validation (`nixline-branch-validation.yml`)
+
+Provides comprehensive branch-based development workflow for baseline repositories with automated validation, PR creation, and issue management.
+
+**Features:**
+- Immediate unstable tag updates for testing
+- Comprehensive validation (flake check, app verification, content validation)
+- Automatic PR creation and merging when validation passes
+- Issue creation and management when validation fails
+- Branch author assignment for clear responsibility
+- Issue auto-closure when validation passes
+
+**Usage:**
+```yaml
+# .github/workflows/branch-validation.yml
+name: Branch Validation
+on:
+  push:
+    branches-ignore: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  validate:
+    uses: YOUR-ORG/.github/.github/workflows/nixline-branch-validation.yml@stable
+    with:
+      baseline_repo: YOUR-ORG/nixline-baseline
+      validation_apps: "sync,check,import-policy,fetch-license,list-licenses"
+      issue_labels: "validation-failure,automated"
+```
+
+**Configuration Options:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `baseline_repo` | string | Required | Repository name (e.g., "org/nixline-baseline") |
+| `validation_apps` | string | `sync,check,import-policy,fetch-license,list-licenses` | Apps to validate (comma-separated) |
+| `issue_labels` | string | `validation-failure,automated` | Labels for validation failure issues |
+
+**When to Use:**
+- Baseline repositories with active development
+- Teams requiring protected main branches
+- Projects needing comprehensive validation before merge
+- Organizations wanting automated issue tracking for failures
 
 ## Workflow Diagrams
 

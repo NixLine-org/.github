@@ -1,3 +1,21 @@
+#
+# NixLine Promote to Stable (reusable)
+#
+# Promotes commits from baseline repositories to stable with comprehensive validation.
+# Supports both stable (full audit trail with flake.lock updates) and unstable
+# (lightweight tag-only) promotion modes.
+#
+# Features:
+# - Validates commits before promotion (flake check, app verification)
+# - Creates audit trail commits for stable promotions
+# - Updates flake.lock files for consumers
+# - Handles both PR-based and manual promotion workflows
+# - Creates issues on validation failures with detailed reports
+#
+# Called by: baseline repository promotion workflows
+# Purpose: Centralized, validated promotion logic across NixLine organization
+#
+
 name: NixLine Promote to Stable (reusable)
 
 on:

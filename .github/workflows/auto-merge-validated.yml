@@ -1,3 +1,15 @@
+#
+# Auto-merge validated PRs
+#
+# Automatically merges pull requests in the .github repository when all validation
+# checks pass. Ensures only validated workflow changes are deployed without requiring
+# manual intervention for routine updates.
+#
+# Triggered by: pull_request events, check_suite completion
+# Purpose: Streamline deployment of validated workflow improvements
+# Safety: Only merges when ALL validation checks pass
+#
+
 name: Auto-merge validated PRs
 
 on:

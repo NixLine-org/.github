@@ -1,3 +1,15 @@
+#
+# Validate Workflows
+#
+# Validates all workflow files in the .github repository for syntax and quality.
+# Ensures YAML syntax, GitHub Actions syntax, and shell scripts are correct
+# before workflows are used across the organization.
+#
+# Triggered by: push, pull_request (all branches)
+# Purpose: Quality control for organization-wide reusable workflows
+# Output: Prevents broken workflows from being deployed organization-wide
+#
+
 name: Validate Workflows
 
 on:

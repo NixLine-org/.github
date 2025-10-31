@@ -238,7 +238,6 @@ jobs:
         run: |
           BRANCH_NAME="promote-${{ steps.commit.outputs.short_hash }}"
 
-          echo "${{ steps.commit.outputs.commit_hash }}" > .stable-candidate
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
@@ -247,6 +246,7 @@ jobs:
 
           # Create and push new branch
           git checkout -b "$BRANCH_NAME"
+          echo "${{ steps.commit.outputs.commit_hash }}" > .stable-candidate
           git add .stable-candidate
           git commit -m "Mark ${{ steps.commit.outputs.short_hash }} as stable candidate"
           git push origin "$BRANCH_NAME"

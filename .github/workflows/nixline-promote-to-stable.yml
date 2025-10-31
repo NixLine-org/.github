@@ -78,9 +78,19 @@ jobs:
               echo "Using PR promotion commit: $CANDIDATE_COMMIT"
               echo "promotion_type=pr" >> $GITHUB_OUTPUT
             else
-              echo "found=false" >> $GITHUB_OUTPUT
-              echo "Error: .stable-candidate file not found for PR-based promotion"
-              exit 1
+              # First time setup - use current HEAD and initialize .stable-candidate
+              CANDIDATE_COMMIT=$(git rev-parse HEAD)
+              echo "No .stable-candidate found, initializing with current HEAD: $CANDIDATE_COMMIT"
+              echo "$CANDIDATE_COMMIT" > .stable-candidate
+
+              # Create initialization commit
+              git add .stable-candidate
+              git commit -m "Initialize stable candidate tracking
+
+              This commit initializes the .stable-candidate file for the promotion workflow.
+              The file tracks which commit should be promoted to stable."
+
+              echo "promotion_type=initialization" >> $GITHUB_OUTPUT
             fi
           fi
 

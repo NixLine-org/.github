@@ -305,12 +305,21 @@ jobs:
               '---\n\n' +
               '*Merging this PR will update the `stable` tag to point to `' + commit + '`.*';
 
-            await github.rest.pulls.create({
+            const pr = await github.rest.pulls.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: title,
               body: body,
               head: branchName,
-              base: 'main',
+              base: 'main'
+            });
+
+            // Add labels to the PR
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.data.number,
               labels: ['automated', 'promote-to-stable']
             });
+
+            console.log('Created PR #' + pr.data.number + ' with labels');

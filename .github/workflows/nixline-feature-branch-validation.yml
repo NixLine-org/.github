@@ -238,6 +238,39 @@ jobs:
             echo "[PASS] No problematic placeholder content found" >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Validate CODEOWNERS file
+        run: |
+          echo "## CODEOWNERS Validation" >> $GITHUB_STEP_SUMMARY
+          if [ -f ".github/CODEOWNERS" ]; then
+            SYNTAX_ERRORS=false
+
+            # Check for double @ symbols
+            if grep -n "@@" .github/CODEOWNERS > /dev/null 2>&1; then
+              echo "[FAIL] Double @ symbols found in CODEOWNERS" >> $GITHUB_STEP_SUMMARY
+              SYNTAX_ERRORS=true
+            fi
+
+            # Check for invalid team references (teams should be @org/team format)
+            if grep -E "@[^/\s]+\s" .github/CODEOWNERS > /dev/null 2>&1; then
+              echo "[WARN] Potential invalid team references found (check team visibility)" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            # Check for malformed file paths
+            if grep -E "^\s*[^#@*].*[^@\s]$" .github/CODEOWNERS | grep -v -E "^\s*[^\s]+\s+@" > /dev/null 2>&1; then
+              echo "[FAIL] Malformed entries found in CODEOWNERS" >> $GITHUB_STEP_SUMMARY
+              SYNTAX_ERRORS=true
+            fi
+
+            if [ "$SYNTAX_ERRORS" = true ]; then
+              echo "[FAIL] CODEOWNERS file has syntax errors" >> $GITHUB_STEP_SUMMARY
+              exit 1
+            else
+              echo "[PASS] CODEOWNERS file syntax is valid" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "[INFO] No CODEOWNERS file found" >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Check for secrets in code
         run: |
           echo "## Secret Detection" >> $GITHUB_STEP_SUMMARY

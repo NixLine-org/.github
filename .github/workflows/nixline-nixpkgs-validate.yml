@@ -177,38 +177,42 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
+            const tag = process.env.TAG;
+            const commit = process.env.COMMIT;
+            const flakeCheck = process.env.FLAKE_CHECK;
+            const appsBuilt = process.env.APPS_BUILT;
+            const appsTested = process.env.APPS_TESTED;
+            const buildErrors = process.env.BUILD_ERRORS;
+            const runUrl = process.env.RUN_URL;
+
+            const title = 'Nixpkgs validation failed for ' + tag;
+            const body = '## Validation Failure\n\n' +
+              'The nixpkgs update validation failed for tag `' + tag + '`.\n\n' +
+              '**Pinned commit:** `' + commit + '`\n\n' +
+              '**Validation Results:**\n' +
+              '- Flake check: ' + flakeCheck + '\n' +
+              '- Apps built: ' + appsBuilt + '\n' +
+              '- Apps tested: ' + appsTested + '\n\n' +
+              '**Build errors:** ' + buildErrors + '\n\n' +
+              '**Workflow run:** ' + runUrl + '\n\n' +
+              '### Next Steps\n\n' +
+              '1. Review the workflow logs for specific errors\n' +
+              '2. If nixpkgs commit is problematic, wait for next update cycle\n' +
+              '3. If baseline code needs fixes, make corrections and re-run validation\n' +
+              '4. Manual rollback: `git tag -f ' + tag + ' PREVIOUS_COMMIT && git push -f origin ' + tag + '`';
+
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: `Nixpkgs validation failed for ${process.env.TAG}`,
-              body: `## Validation Failure
-
-The nixpkgs update validation failed for tag \`${process.env.TAG}\`.
-
-**Pinned commit:** \`${process.env.COMMIT}\`
-
-**Validation Results:**
-- Flake check: ${process.env.FLAKE_CHECK}
-- Apps built: ${process.env.APPS_BUILT}
-- Apps tested: ${process.env.APPS_TESTED}
-
-**Build errors:** ${process.env.BUILD_ERRORS}
-
-**Workflow run:** ${process.env.RUN_URL}
-
-### Next Steps
-
-1. Review the workflow logs for specific errors
-2. If nixpkgs commit is problematic, wait for next update cycle
-3. If baseline code needs fixes, make corrections and re-run validation
-4. Manual rollback: \`git tag -f ${process.env.TAG} PREVIOUS_COMMIT && git push -f origin ${process.env.TAG}\``,
+              title: title,
+              body: body,
               labels: ['automated', 'nixpkgs-update', 'validation-failure']
             });
 
   promote:
     needs: validate
     if: needs.validate.outputs.validation_passed == 'true' && inputs.promote_on_success
-    uses: ./.github/workflows/nixline-nixpkgs-promote.yml
+    uses: NixLine-org/.github/.github/workflows/nixline-nixpkgs-promote.yml@stable
     with:
       source_tag: ${{ inputs.tag_to_validate }}
       target_tag: ${{ inputs.stable_tag }}

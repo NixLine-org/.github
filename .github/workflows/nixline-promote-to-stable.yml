@@ -22,6 +22,7 @@ on:
 # permissions:
 #   contents: write
 #   actions: write
+#   issues: write
 
 jobs:
   promote:
@@ -64,8 +65,79 @@ jobs:
           echo "short_hash=$SHORT_HASH" >> $GITHUB_OUTPUT
           echo "found=true" >> $GITHUB_OUTPUT
 
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Checkout promotion commit
+        run: |
+          git checkout ${{ steps.candidate.outputs.commit_hash }}
+
+      - name: Validate flake
+        id: validate
+        run: |
+          echo "## Validating Commit for Promotion" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ steps.candidate.outputs.commit_hash }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          VALIDATION_PASSED=true
+
+          # Run flake check
+          echo "### Flake Check" >> $GITHUB_STEP_SUMMARY
+          if nix flake check --all-systems --no-build --show-trace; then
+            echo "[PASS] Flake check passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "[FAIL] Flake check failed" >> $GITHUB_STEP_SUMMARY
+            VALIDATION_PASSED=false
+          fi
+
+          # Verify critical apps exist
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### App Verification" >> $GITHUB_STEP_SUMMARY
+          for app in sync check create-pack import-policy fetch-license list-licenses; do
+            if nix flake show --json | jq -e ".apps.\"x86_64-linux\".\"$app\"" > /dev/null 2>&1; then
+              echo "[PASS] **$app**: Available" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "[FAIL] **$app**: Missing" >> $GITHUB_STEP_SUMMARY
+              VALIDATION_PASSED=false
+            fi
+          done
+
+          # Test key apps
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### App Testing" >> $GITHUB_STEP_SUMMARY
+
+          # Test sync with dry-run (if available)
+          if nix run .#sync -- --help > /dev/null 2>&1; then
+            echo "[PASS] **sync**: Responsive" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "[FAIL] **sync**: Not responsive" >> $GITHUB_STEP_SUMMARY
+            VALIDATION_PASSED=false
+          fi
+
+          # Test list-licenses
+          if nix run .#list-licenses > /dev/null 2>&1; then
+            echo "[PASS] **list-licenses**: Working" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "[FAIL] **list-licenses**: Failed" >> $GITHUB_STEP_SUMMARY
+            VALIDATION_PASSED=false
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$VALIDATION_PASSED" = "true" ]; then
+            echo "### [PASS] Validation Result: PASSED" >> $GITHUB_STEP_SUMMARY
+            echo "Commit is ready for promotion to stable." >> $GITHUB_STEP_SUMMARY
+            echo "validation_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "### [FAIL] Validation Result: FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "Commit failed validation and cannot be promoted." >> $GITHUB_STEP_SUMMARY
+            echo "validation_passed=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Update stable tag
-        if: steps.candidate.outputs.found == 'true'
+        if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true'
         run: |
           COMMIT=${{ steps.candidate.outputs.commit_hash }}
 
@@ -84,7 +156,7 @@ jobs:
           echo "Updated ${{ inputs.stable_tag }} tag to $COMMIT"
 
       - name: Cleanup marker file
-        if: steps.candidate.outputs.found == 'true' && steps.candidate.outputs.promotion_type == 'pr'
+        if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true' && steps.candidate.outputs.promotion_type == 'pr'
         uses: actions/github-script@v7
         env:
           SHORT_HASH: ${{ steps.candidate.outputs.short_hash }}
@@ -128,18 +200,63 @@ jobs:
               console.log('Failed to delete branch (may not exist): ' + error.message);
             }
 
+      - name: Create validation failure issue
+        if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'false'
+        uses: actions/github-script@v7
+        env:
+          COMMIT_HASH: ${{ steps.candidate.outputs.commit_hash }}
+          SHORT_HASH: ${{ steps.candidate.outputs.short_hash }}
+          PROMOTION_TYPE: ${{ steps.candidate.outputs.promotion_type }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const commitHash = process.env.COMMIT_HASH;
+            const shortHash = process.env.SHORT_HASH;
+            const promotionType = process.env.PROMOTION_TYPE;
+            const runUrl = process.env.RUN_URL;
+
+            const title = `Promotion to stable failed for ${shortHash}`;
+            const body = `## Promotion Validation Failed\n\n` +
+              `The promotion validation failed for commit \`${commitHash}\`.\n\n` +
+              `**Promotion type:** ${promotionType}\n` +
+              `**Commit:** \`${commitHash}\`\n\n` +
+              `### Next Steps\n\n` +
+              `1. Review the workflow logs for specific validation errors\n` +
+              `2. Fix any identified issues in the codebase\n` +
+              `3. Re-run promotion after fixes are committed\n\n` +
+              `**Workflow run:** ${runUrl}\n\n` +
+              `---\n\n` +
+              `*This issue was automatically created by the promotion workflow.*`;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['automated', 'promotion-failure', 'validation-error']
+            });
+
       - name: Summary
         if: steps.candidate.outputs.found == 'true'
         run: |
-          echo "## Promotion Complete" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.validate.outputs.validation_passed }}" == "true" ]; then
+            echo "## Promotion Complete" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ steps.candidate.outputs.promotion_type }}" == "manual" ]; then
-            echo "**Type:** Manual promotion" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ steps.candidate.outputs.promotion_type }}" == "manual" ]; then
+              echo "**Type:** Manual promotion" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "**Type:** PR-based promotion" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            echo "**${{ inputs.stable_tag }} tag updated to:** \`${{ steps.candidate.outputs.commit_hash }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Consumer repositories will receive this update on their next policy sync." >> $GITHUB_STEP_SUMMARY
           else
-            echo "**Type:** PR-based promotion" >> $GITHUB_STEP_SUMMARY
+            echo "## Promotion Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Reason:** Validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "**Commit:** \`${{ steps.candidate.outputs.commit_hash }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "See validation results above and check the automatically created issue for next steps." >> $GITHUB_STEP_SUMMARY
           fi
-
-          echo "**${{ inputs.stable_tag }} tag updated to:** \`${{ steps.candidate.outputs.commit_hash }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Consumer repositories will receive this update on their next policy sync." >> $GITHUB_STEP_SUMMARY

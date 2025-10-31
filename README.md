@@ -1,5 +1,9 @@
 # NixLine Reusable Workflows
 
+[![Validate Workflows](https://github.com/NixLine-org/.github/actions/workflows/validate-workflows.yml/badge.svg)](https://github.com/NixLine-org/.github/actions/workflows/validate-workflows.yml)
+[![Auto Merge Validated](https://github.com/NixLine-org/.github/actions/workflows/auto-merge-validated.yml/badge.svg)](https://github.com/NixLine-org/.github/actions/workflows/auto-merge-validated.yml)
+[![Update Stable Tag](https://github.com/NixLine-org/.github/actions/workflows/update-stable-tag.yml/badge.svg)](https://github.com/NixLine-org/.github/actions/workflows/update-stable-tag.yml)
+
 This repository contains reusable GitHub Actions workflows for the NixLine organization.
 
 **Workflow Quality:** All reusable workflows in this repository are automatically validated on every commit via the [`validate-workflows.yml`](.github/workflows/validate-workflows.yml) workflow. This ensures YAML syntax, GitHub Actions syntax and shell scripts are correct before workflows are tagged as stable and used across the organization.

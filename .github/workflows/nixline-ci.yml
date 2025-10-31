@@ -1,3 +1,17 @@
+#
+# NixLine CI (reusable) - Consumer Repository Workflow
+#
+# IMPORTANT: This workflow is designed for CONSUMER repositories that materialize
+# and validate policy files FROM a baseline repository.
+#
+# DO NOT USE for baseline repositories - they need different validation:
+# - Baseline repos validate source integrity (flake check, app functionality)
+# - Consumer repos validate materialized files (this workflow)
+#
+# Usage: Consumer repositories only
+# Purpose: Materialize policies from baseline and validate compliance
+#
+
 name: NixLine CI (reusable)
 on:
   workflow_call:

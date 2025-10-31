@@ -311,15 +311,21 @@ jobs:
 
 ## Workflow Documentation
 
-### Basic CI (`nixline-ci.yml`)
+### Basic CI ([`nixline-ci.yml`](.github/workflows/nixline-ci.yml))
 
-Provides fundamental CI validation for NixLine consumer repositories including policy compliance checks and basic testing.
+**CONSUMER REPOSITORIES ONLY** - Provides fundamental CI validation for NixLine consumer repositories including policy compliance checks and basic testing.
+
+**IMPORTANT:** This workflow is designed specifically for consumer repositories that materialize and validate policy files FROM a baseline repository. Do NOT use for baseline repositories.
+
+**Repository Types:**
+- [+] Consumer repositories - materializes files from baseline and validates compliance
+- [-] Baseline repositories - use local CI that validates source integrity (flake check, apps)
 
 **Features:**
-- Policy compliance validation
+- Policy compliance validation by materializing files from baseline
 - Nix flake evaluation
-- Basic health checks
-- Supports all consumption patterns
+- Basic health checks for materialized policies
+- Supports all consumption patterns (direct, configuration-driven, template-based)
 
 **Usage:**
 ```yaml

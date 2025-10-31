@@ -136,7 +136,7 @@ jobs:
             echo "validation_passed=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create audit trail commit
+      - name: Update flake.lock and create audit trail
         if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true'
         run: |
           COMMIT=${{ steps.candidate.outputs.commit_hash }}
@@ -145,21 +145,25 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # Update flake.lock for consumers
+          nix flake update
+
           # Update .stable-candidate file with promoted commit
           echo "$COMMIT" > .stable-candidate
 
           # Create audit trail commit
-          git add .stable-candidate
+          git add flake.lock .stable-candidate
           git commit -m "Mark $SHORT_HASH as ${{ inputs.stable_tag }} candidate
 
           Promoted commit: $COMMIT
           Promotion type: ${{ steps.candidate.outputs.promotion_type }}
-          Validation passed: ${{ steps.validate.outputs.validation_passed }}"
+          Validation passed: ${{ steps.validate.outputs.validation_passed }}
+          Updated flake.lock for consumers"
 
           # Push the audit commit to main
           git push origin main
 
-          echo "Created audit trail commit for $COMMIT"
+          echo "Created audit trail commit for $COMMIT with updated flake.lock"
 
       - name: Update stable tag
         if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true'

@@ -38,11 +38,22 @@ on:
         required: false
         type: string
         default: 'validation-failure,automated'
+      enable_codeql:
+        description: 'Enable CodeQL security analysis'
+        required: false
+        type: boolean
+        default: true
+      enable_dependency_scan:
+        description: 'Enable dependency vulnerability scanning'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
   pull-requests: write
   issues: write
+  security-events: write
 
 jobs:
   update-unstable:
@@ -181,10 +192,58 @@ jobs:
             echo "Branch has validation errors that must be resolved." >> $GITHUB_STEP_SUMMARY
           fi
 
+  # Security analysis with CodeQL
+  security-analysis:
+    if: inputs.enable_codeql == true
+    runs-on: ubuntu-latest
+    needs: [update-unstable]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.update-unstable.outputs.branch_ref }}
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+          config: |
+            paths-ignore:
+              - "**/*.md"
+              - "**/*.txt"
+              - "**/LICENSE*"
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  # Dependency and vulnerability scanning
+  dependency-security:
+    if: inputs.enable_dependency_scan == true
+    runs-on: ubuntu-latest
+    needs: [update-unstable]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.update-unstable.outputs.branch_ref }}
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
   handle-success:
     runs-on: ubuntu-latest
-    needs: [update-unstable, validate]
-    if: needs.validate.outputs.validation_passed == 'true'
+    needs: [update-unstable, validate, security-analysis, dependency-security]
+    if: needs.validate.outputs.validation_passed == 'true' && always()
 
     steps:
       - name: Checkout repository
@@ -356,8 +415,8 @@ jobs:
 
   handle-failure:
     runs-on: ubuntu-latest
-    needs: [update-unstable, validate]
-    if: needs.validate.outputs.validation_passed == 'false'
+    needs: [update-unstable, validate, security-analysis, dependency-security]
+    if: needs.validate.outputs.validation_passed == 'false' && always()
 
     steps:
       - name: Create or update validation failure issue

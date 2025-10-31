@@ -236,13 +236,20 @@ jobs:
 
       - name: Create marker file
         run: |
+          BRANCH_NAME="promote-${{ steps.commit.outputs.short_hash }}"
+
           echo "${{ steps.commit.outputs.commit_hash }}" > .stable-candidate
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b promote-${{ steps.commit.outputs.short_hash }}
+
+          # Delete remote branch if it exists
+          git push origin --delete "$BRANCH_NAME" 2>/dev/null || true
+
+          # Create and push new branch
+          git checkout -b "$BRANCH_NAME"
           git add .stable-candidate
           git commit -m "Mark ${{ steps.commit.outputs.short_hash }} as stable candidate"
-          git push origin promote-${{ steps.commit.outputs.short_hash }}
+          git push origin "$BRANCH_NAME"
 
       - name: Create pull request
         uses: actions/github-script@v7
@@ -257,6 +264,25 @@ jobs:
             const shortHash = process.env.SHORT_HASH;
             const tag = process.env.TAG;
             const runUrl = process.env.RUN_URL;
+            const branchName = 'promote-' + shortHash;
+
+            // Close any existing PR from this branch
+            const existingPRs = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: context.repo.owner + ':' + branchName,
+              state: 'open'
+            });
+
+            for (const pr of existingPRs.data) {
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                state: 'closed'
+              });
+              console.log('Closed existing PR #' + pr.number);
+            }
 
             const title = 'Promote ' + tag + ' to stable (' + shortHash + ')';
             const body = '## Validation Passed\n\n' +
@@ -281,7 +307,7 @@ jobs:
               repo: context.repo.repo,
               title: title,
               body: body,
-              head: 'promote-' + shortHash,
+              head: branchName,
               base: 'main',
               labels: ['automated', 'promote-to-stable']
             });

@@ -365,6 +365,7 @@ jobs:
 - **Nix Validation:** Full flake check across all systems + app verification
 - **YAML/Workflow Validation:** Syntax validation for all configuration files
 - **Content Validation:** Prevents problematic placeholder content
+- **CODEOWNERS Validation:** Syntax validation and team reference checks
 - **Shell Script Validation:** Basic shellcheck integration
 
 **Required Workflow:**

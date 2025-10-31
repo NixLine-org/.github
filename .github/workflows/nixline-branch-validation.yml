@@ -1,0 +1,414 @@
+#
+# NixLine Branch Validation (reusable)
+#
+# Validates feature branches and manages promotion to main through automated PRs.
+# Provides immediate feedback loop with unstable tag updates and comprehensive
+# validation before merging to main.
+#
+# Features:
+# - Always updates unstable tag (immediate testing availability)
+# - Runs comprehensive validation (flake check, apps, content validation)
+# - Creates/updates PRs automatically when validation passes
+# - Creates/updates issues when validation fails (assigned to branch author)
+# - Manages issue lifecycle (auto-close when tests pass)
+#
+# Triggered by: push to any branch except main
+# Purpose: Automated validation and promotion pipeline for development branches
+# Safety: All changes validated before reaching main branch
+#
+
+name: NixLine Branch Validation (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      baseline_repo:
+        description: 'Baseline repository name (e.g., "org/nixline-baseline")'
+        required: true
+        type: string
+      validation_apps:
+        description: 'Apps to validate (comma-separated)'
+        required: false
+        type: string
+        default: 'sync,check,import-policy,fetch-license,list-licenses'
+      issue_labels:
+        description: 'Labels for validation failure issues'
+        required: false
+        type: string
+        default: 'validation-failure,automated'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  update-unstable:
+    runs-on: ubuntu-latest
+    outputs:
+      branch_name: ${{ steps.branch.outputs.name }}
+      commit_hash: ${{ steps.commit.outputs.hash }}
+      short_hash: ${{ steps.commit.outputs.short_hash }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Get branch and commit info
+        id: branch
+        run: |
+          BRANCH_NAME="${{ github.ref_name }}"
+          echo "name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "Branch: $BRANCH_NAME"
+
+      - name: Get commit info
+        id: commit
+        run: |
+          COMMIT_HASH="${{ github.sha }}"
+          SHORT_HASH="${COMMIT_HASH:0:12}"
+          echo "hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "short_hash=$SHORT_HASH" >> $GITHUB_OUTPUT
+          echo "Commit: $COMMIT_HASH ($SHORT_HASH)"
+
+      - name: Update unstable tag
+        run: |
+          COMMIT_HASH="${{ steps.commit.outputs.hash }}"
+          BRANCH_NAME="${{ steps.branch.outputs.name }}"
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Delete local unstable tag if it exists
+          git tag -d unstable 2>/dev/null || true
+
+          # Create new unstable tag at current commit
+          git tag -a unstable -m "Unstable: $BRANCH_NAME branch at ${{ steps.commit.outputs.short_hash }}"
+
+          # Force push the unstable tag
+          git push --force origin unstable
+
+          echo "Updated unstable tag to $COMMIT_HASH from branch $BRANCH_NAME"
+
+  validate:
+    runs-on: ubuntu-latest
+    needs: update-unstable
+    outputs:
+      validation_passed: ${{ steps.validate.outputs.passed }}
+      validation_summary: ${{ steps.validate.outputs.summary }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Run comprehensive validation
+        id: validate
+        run: |
+          echo "## Branch Validation for ${{ needs.update-unstable.outputs.branch_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ needs.update-unstable.outputs.commit_hash }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          VALIDATION_PASSED=true
+          VALIDATION_SUMMARY=""
+
+          # Run flake check
+          echo "### Flake Check" >> $GITHUB_STEP_SUMMARY
+          if nix flake check --all-systems --no-build --show-trace; then
+            echo "[PASS] Flake check passed" >> $GITHUB_STEP_SUMMARY
+            VALIDATION_SUMMARY="$VALIDATION_SUMMARY✅ Flake check passed\n"
+          else
+            echo "[FAIL] Flake check failed" >> $GITHUB_STEP_SUMMARY
+            VALIDATION_SUMMARY="$VALIDATION_SUMMARY❌ Flake check failed\n"
+            VALIDATION_PASSED=false
+          fi
+
+          # Verify critical apps exist and work
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### App Verification" >> $GITHUB_STEP_SUMMARY
+          IFS=',' read -ra APPS <<< "${{ inputs.validation_apps }}"
+          for app in "${APPS[@]}"; do
+            if nix flake show --json | jq -e ".apps.\"x86_64-linux\".\"$app\"" > /dev/null 2>&1; then
+              # Test if app runs (basic smoke test)
+              if timeout 30 nix run ".#$app" -- --help > /dev/null 2>&1; then
+                echo "[PASS] **$app**: Available and responsive" >> $GITHUB_STEP_SUMMARY
+                VALIDATION_SUMMARY="$VALIDATION_SUMMARY✅ $app: working\n"
+              else
+                echo "[WARN] **$app**: Available but not responsive" >> $GITHUB_STEP_SUMMARY
+                VALIDATION_SUMMARY="$VALIDATION_SUMMARY⚠️ $app: unresponsive\n"
+              fi
+            else
+              echo "[FAIL] **$app**: Missing" >> $GITHUB_STEP_SUMMARY
+              VALIDATION_SUMMARY="$VALIDATION_SUMMARY❌ $app: missing\n"
+              VALIDATION_PASSED=false
+            fi
+          done
+
+          # Content validation (check for placeholders)
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Content Validation" >> $GITHUB_STEP_SUMMARY
+          if grep -r "CHANGEME\|TODO.*:" . --exclude-dir=.git --exclude-dir=.github >/dev/null 2>&1; then
+            echo "[WARN] Found CHANGEME or TODO items (review recommended)" >> $GITHUB_STEP_SUMMARY
+            VALIDATION_SUMMARY="$VALIDATION_SUMMARY⚠️ Found TODO/CHANGEME items\n"
+          else
+            echo "[PASS] No placeholder content found" >> $GITHUB_STEP_SUMMARY
+            VALIDATION_SUMMARY="$VALIDATION_SUMMARY✅ No placeholder content\n"
+          fi
+
+          # Set outputs
+          echo "passed=$VALIDATION_PASSED" >> $GITHUB_OUTPUT
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$VALIDATION_SUMMARY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$VALIDATION_PASSED" = "true" ]; then
+            echo "### [PASS] Validation Result: PASSED" >> $GITHUB_STEP_SUMMARY
+            echo "Branch is ready for promotion to main." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### [FAIL] Validation Result: FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "Branch has validation errors that must be resolved." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  handle-success:
+    runs-on: ubuntu-latest
+    needs: [update-unstable, validate]
+    if: needs.validate.outputs.validation_passed == 'true'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create or update PR
+        uses: actions/github-script@v7
+        env:
+          BRANCH_NAME: ${{ needs.update-unstable.outputs.branch_name }}
+          COMMIT_HASH: ${{ needs.update-unstable.outputs.commit_hash }}
+          SHORT_HASH: ${{ needs.update-unstable.outputs.short_hash }}
+          VALIDATION_SUMMARY: ${{ needs.validate.outputs.validation_summary }}
+        with:
+          script: |
+            const branchName = process.env.BRANCH_NAME;
+            const commitHash = process.env.COMMIT_HASH;
+            const shortHash = process.env.SHORT_HASH;
+            const validationSummary = process.env.VALIDATION_SUMMARY;
+
+            // Check if PR already exists
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${branchName}`,
+              state: 'open'
+            });
+
+            const title = `Promote ${branchName} to main (${shortHash})`;
+            const body = `## Branch Promotion\n\n` +
+              `This PR promotes the \`${branchName}\` branch to main after successful validation.\n\n` +
+              `**Commit:** \`${commitHash}\`\n` +
+              `**Validation:** All checks passed\n\n` +
+              `### Validation Results\n${validationSummary}\n\n` +
+              `---\n\n` +
+              `*This PR was automatically created by the branch validation workflow.*`;
+
+            if (prs.length > 0) {
+              // Update existing PR
+              const pr = prs[0];
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                title: title,
+                body: body
+              });
+
+              console.log(`Updated existing PR #${pr.number}`);
+
+              // Enable auto-merge
+              try {
+                await github.rest.pulls.createReview({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                  event: 'APPROVE',
+                  body: 'Auto-approving validated branch promotion'
+                });
+
+                await github.rest.pulls.merge({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                  commit_title: `Promote ${branchName} to main (${shortHash})`,
+                  commit_message: `Validated promotion of ${branchName} branch\n\nCommit: ${commitHash}\nValidation: All checks passed`,
+                  merge_method: 'squash'
+                });
+
+                console.log(`Auto-merged PR #${pr.number}`);
+              } catch (error) {
+                console.log('Auto-merge failed, manual merge required:', error.message);
+              }
+            } else {
+              // Create new PR
+              const { data: newPr } = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                head: branchName,
+                base: 'main'
+              });
+
+              console.log(`Created new PR #${newPr.number}`);
+
+              // Auto-approve and merge
+              try {
+                await github.rest.pulls.createReview({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: newPr.number,
+                  event: 'APPROVE',
+                  body: 'Auto-approving validated branch promotion'
+                });
+
+                await github.rest.pulls.merge({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: newPr.number,
+                  commit_title: `Promote ${branchName} to main (${shortHash})`,
+                  commit_message: `Validated promotion of ${branchName} branch\n\nCommit: ${commitHash}\nValidation: All checks passed`,
+                  merge_method: 'squash'
+                });
+
+                console.log(`Auto-merged new PR #${newPr.number}`);
+              } catch (error) {
+                console.log('Auto-merge failed, manual merge required:', error.message);
+              }
+            }
+
+      - name: Close validation failure issues
+        uses: actions/github-script@v7
+        env:
+          BRANCH_NAME: ${{ needs.update-unstable.outputs.branch_name }}
+        with:
+          script: |
+            const branchName = process.env.BRANCH_NAME;
+
+            // Find open validation failure issues for this branch
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'validation-failure'
+            });
+
+            for (const issue of issues) {
+              if (issue.title.includes(branchName)) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: `✅ **Validation now passing!**\n\nBranch \`${branchName}\` has passed validation and been promoted to main.\n\nClosing this issue automatically.`
+                });
+
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  state: 'closed'
+                });
+
+                console.log(`Closed validation failure issue #${issue.number}`);
+              }
+            }
+
+  handle-failure:
+    runs-on: ubuntu-latest
+    needs: [update-unstable, validate]
+    if: needs.validate.outputs.validation_passed == 'false'
+
+    steps:
+      - name: Create or update validation failure issue
+        uses: actions/github-script@v7
+        env:
+          BRANCH_NAME: ${{ needs.update-unstable.outputs.branch_name }}
+          COMMIT_HASH: ${{ needs.update-unstable.outputs.commit_hash }}
+          SHORT_HASH: ${{ needs.update-unstable.outputs.short_hash }}
+          VALIDATION_SUMMARY: ${{ needs.validate.outputs.validation_summary }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PUSHER: ${{ github.actor }}
+        with:
+          script: |
+            const branchName = process.env.BRANCH_NAME;
+            const commitHash = process.env.COMMIT_HASH;
+            const shortHash = process.env.SHORT_HASH;
+            const validationSummary = process.env.VALIDATION_SUMMARY;
+            const runUrl = process.env.RUN_URL;
+            const pusher = process.env.PUSHER;
+
+            // Check if issue already exists for this branch
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'validation-failure'
+            });
+
+            const existingIssue = issues.find(issue => issue.title.includes(branchName));
+
+            const title = `Validation failed for branch ${branchName}`;
+            const body = `## Branch Validation Failed\n\n` +
+              `Branch \`${branchName}\` failed validation and cannot be promoted to main.\n\n` +
+              `**Latest commit:** \`${commitHash}\`\n` +
+              `**Pushed by:** @${pusher}\n\n` +
+              `### Validation Results\n${validationSummary}\n\n` +
+              `### Next Steps\n\n` +
+              `1. Review the validation errors above\n` +
+              `2. Fix the identified issues in your branch\n` +
+              `3. Push the fixes - this will trigger re-validation\n` +
+              `4. This issue will auto-close when validation passes\n\n` +
+              `**Workflow run:** ${runUrl}\n\n` +
+              `---\n\n` +
+              `*This issue will be automatically updated with each push to the branch.*`;
+
+            if (existingIssue) {
+              // Update existing issue
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                title: title,
+                body: body
+              });
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: `🔄 **Updated validation results**\n\nLatest commit: \`${shortHash}\`\n\nValidation still failing - see updated issue description for current status.`
+              });
+
+              console.log(`Updated existing issue #${existingIssue.number}`);
+            } else {
+              // Create new issue
+              const { data: newIssue } = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['validation-failure', 'automated'],
+                assignees: [pusher]
+              });
+
+              console.log(`Created new issue #${newIssue.number} assigned to ${pusher}`);
+            }

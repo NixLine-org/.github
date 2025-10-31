@@ -136,6 +136,14 @@ jobs:
             echo "validation_passed=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Checkout current main for audit trail
+        if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true'
+        run: |
+          # Switch back to current main branch to create audit trail
+          # This prevents race conditions when main has moved forward
+          git checkout main
+          git pull origin main
+
       - name: Update flake.lock and create audit trail
         if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true'
         run: |

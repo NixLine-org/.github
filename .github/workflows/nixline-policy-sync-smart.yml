@@ -1,3 +1,16 @@
+#
+# NixLine Policy Sync Smart (reusable)
+#
+# Intelligently synchronizes policy files from baseline repository to consumer
+# repositories with automatic fallback strategies. Attempts direct push first,
+# falls back to PR creation if conflicts occur. Provides better handling for
+# organizations with many repositories.
+#
+# Triggered by: workflow_call from consumer repositories
+# Purpose: Robust policy synchronization with conflict resolution
+# Features: Direct push, PR fallback, merge conflict handling, rate limit protection
+#
+
 name: NixLine Policy Sync Smart (reusable)
 
 on:

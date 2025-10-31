@@ -1,3 +1,15 @@
+#
+# NixLine Auto-Approve (reusable)
+#
+# Automatically approves and merges pull requests that match specified criteria.
+# Designed for automated PRs from trusted sources like github-actions[bot] with
+# predictable titles (e.g., "Policy Sync"). Provides safety through actor filtering.
+#
+# Triggered by: workflow_call from consumer repositories
+# Purpose: Automated approval for trusted automated PRs
+# Safety: Filters by PR title pattern and actor (default: github-actions[bot])
+#
+
 name: NixLine Auto-Approve (reusable)
 
 on:

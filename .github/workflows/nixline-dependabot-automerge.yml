@@ -1,3 +1,15 @@
+#
+# NixLine Dependabot Auto-merge (reusable)
+#
+# Automatically merges Dependabot pull requests that meet safety criteria.
+# Approves and enables auto-merge for minor/patch version updates and
+# security updates, helping keep dependencies current while maintaining stability.
+#
+# Triggered by: workflow_call from consumer repositories
+# Purpose: Automated dependency management with safety controls
+# Safety: Only merges minor/patch updates and security fixes
+#
+
 name: NixLine Dependabot Auto-merge (reusable)
 on:
   workflow_call:

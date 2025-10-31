@@ -1,0 +1,70 @@
+name: NixLine Nixpkgs Promote (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      source_tag:
+        description: 'Source tag to promote (usually unstable)'
+        required: false
+        type: string
+        default: 'unstable'
+      target_tag:
+        description: 'Target tag (usually stable)'
+        required: false
+        type: string
+        default: 'stable'
+
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_tag }}
+          fetch-depth: 0
+
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get source commit
+        id: commit
+        run: |
+          COMMIT_HASH=$(git rev-parse HEAD)
+          echo "commit_hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
+
+          echo "## Promoting Nixpkgs Update" >> $GITHUB_STEP_SUMMARY
+          echo "**Source tag:** \`${{ inputs.source_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Target tag:** \`${{ inputs.target_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${COMMIT_HASH:0:12}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Move stable tag
+        run: |
+          # Delete existing stable tag if present
+          git tag -d ${{ inputs.target_tag }} || true
+          git push origin :refs/tags/${{ inputs.target_tag }} || true
+
+          # Create new stable tag at current commit
+          git tag -a ${{ inputs.target_tag }} -m "Promote nixpkgs update to stable
+
+Validated nixpkgs update promoted from ${{ inputs.source_tag }}
+
+Commit: ${{ steps.commit.outputs.commit_hash }}
+Validation passed: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+
+          git push origin ${{ inputs.target_tag }}
+
+      - name: Summary
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "**Result:** Successfully promoted \`${{ inputs.source_tag }}\` to \`${{ inputs.target_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Consumer repositories will receive this update on their next policy sync." >> $GITHUB_STEP_SUMMARY

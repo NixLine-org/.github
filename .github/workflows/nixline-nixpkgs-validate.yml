@@ -1,0 +1,204 @@
+name: NixLine Nixpkgs Validate (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      tag_to_validate:
+        description: 'Tag to validate (usually unstable)'
+        required: false
+        type: string
+        default: 'unstable'
+      promote_on_success:
+        description: 'Promote to stable if validation passes'
+        required: false
+        type: boolean
+        default: true
+      stable_tag:
+        description: 'Tag name for stable version'
+        required: false
+        type: string
+        default: 'stable'
+
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write
+#   issues: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag_to_validate }}
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Verify nixpkgs pinning
+        id: verify_pin
+        run: |
+          echo "## Verifying Nixpkgs Pinning" >> $GITHUB_STEP_SUMMARY
+
+          # Check that flake.nix uses commit hash, not branch
+          if grep -q 'github:NixOS/nixpkgs/nixos-unstable' flake.nix; then
+            echo "ERROR: flake.nix still references branch instead of commit hash" >> $GITHUB_STEP_SUMMARY
+            echo "pinned=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          # Extract commit hash from flake.nix
+          PINNED_COMMIT=$(grep 'github:NixOS/nixpkgs/' flake.nix | sed 's|.*github:NixOS/nixpkgs/\([a-f0-9]*\).*|\1|')
+          echo "pinned_commit=$PINNED_COMMIT" >> $GITHUB_OUTPUT
+          echo "pinned=true" >> $GITHUB_OUTPUT
+
+          echo "**Pinned to commit:** \`$PINNED_COMMIT\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Run flake check
+        id: flake_check
+        continue-on-error: true
+        run: |
+          echo "## Running Flake Check" >> $GITHUB_STEP_SUMMARY
+
+          nix flake check --show-trace
+
+          if [ $? -eq 0 ]; then
+            echo "flake_check_passed=true" >> $GITHUB_OUTPUT
+            echo "Flake check passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "flake_check_passed=false" >> $GITHUB_OUTPUT
+            echo "Flake check failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Build all apps
+        id: build_apps
+        continue-on-error: true
+        run: |
+          echo "## Building All Apps" >> $GITHUB_STEP_SUMMARY
+
+          ERRORS=0
+
+          for app in sync check migrate-governance create-pack import-policy fetch-license list-licenses extract-config; do
+            echo "Building app: $app"
+            if nix build ".#$app" --show-trace; then
+              echo "- **$app**: Build successful" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- **$app**: Build failed" >> $GITHUB_STEP_SUMMARY
+              ERRORS=$((ERRORS + 1))
+            fi
+          done
+
+          echo "build_errors=$ERRORS" >> $GITHUB_OUTPUT
+
+          if [ $ERRORS -eq 0 ]; then
+            echo "apps_built=true" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "All apps built successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "apps_built=false" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Failed to build $ERRORS apps" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Test sync and check apps
+        id: test_apps
+        continue-on-error: true
+        run: |
+          echo "## Testing Apps" >> $GITHUB_STEP_SUMMARY
+
+          # Test sync with dry-run
+          if nix run .#sync -- --dry-run; then
+            echo "- **sync --dry-run**: Passed" >> $GITHUB_STEP_SUMMARY
+            SYNC_PASS=true
+          else
+            echo "- **sync --dry-run**: Failed" >> $GITHUB_STEP_SUMMARY
+            SYNC_PASS=false
+          fi
+
+          # Test check (expected to fail since no policies materialized)
+          nix run .#check || true
+          echo "- **check**: Ran (failure expected without materialized policies)" >> $GITHUB_STEP_SUMMARY
+
+          # Test list-licenses
+          if nix run .#list-licenses; then
+            echo "- **list-licenses**: Passed" >> $GITHUB_STEP_SUMMARY
+            LIST_PASS=true
+          else
+            echo "- **list-licenses**: Failed" >> $GITHUB_STEP_SUMMARY
+            LIST_PASS=false
+          fi
+
+          if [ "$SYNC_PASS" = "true" ] && [ "$LIST_PASS" = "true" ]; then
+            echo "apps_tested=true" >> $GITHUB_OUTPUT
+          else
+            echo "apps_tested=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine validation result
+        id: result
+        run: |
+          FLAKE_CHECK="${{ steps.flake_check.outputs.flake_check_passed }}"
+          APPS_BUILT="${{ steps.build_apps.outputs.apps_built }}"
+          APPS_TESTED="${{ steps.test_apps.outputs.apps_tested }}"
+
+          if [ "$FLAKE_CHECK" = "true" ] && [ "$APPS_BUILT" = "true" ] && [ "$APPS_TESTED" = "true" ]; then
+            echo "validation_passed=true" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "**Validation Result:** All checks passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "validation_passed=false" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "**Validation Result:** Validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "- Flake check: $FLAKE_CHECK" >> $GITHUB_STEP_SUMMARY
+            echo "- Apps built: $APPS_BUILT" >> $GITHUB_STEP_SUMMARY
+            echo "- Apps tested: $APPS_TESTED" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Create issue on failure
+        if: steps.result.outputs.validation_passed != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Nixpkgs validation failed for ${{ inputs.tag_to_validate }}',
+              body: `## Validation Failure
+
+The nixpkgs update validation failed for tag \`${{ inputs.tag_to_validate }}\`.
+
+**Pinned commit:** \`${{ steps.verify_pin.outputs.pinned_commit }}\`
+
+**Validation Results:**
+- Flake check: ${{ steps.flake_check.outputs.flake_check_passed }}
+- Apps built: ${{ steps.build_apps.outputs.apps_built }}
+- Apps tested: ${{ steps.test_apps.outputs.apps_tested }}
+
+**Build errors:** ${{ steps.build_apps.outputs.build_errors }}
+
+**Workflow run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+### Next Steps
+
+1. Review the workflow logs for specific errors
+2. If nixpkgs commit is problematic, wait for next update cycle
+3. If baseline code needs fixes, make corrections and re-run validation
+4. Manual rollback: \`git tag -f ${{ inputs.tag_to_validate }} PREVIOUS_COMMIT && git push -f origin ${{ inputs.tag_to_validate }}\``,
+              labels: ['automated', 'nixpkgs-update', 'validation-failure']
+            });
+
+  promote:
+    needs: validate
+    if: needs.validate.outputs.validation_passed == 'true' && inputs.promote_on_success
+    uses: ./.github/workflows/nixline-nixpkgs-promote.yml
+    with:
+      source_tag: ${{ inputs.tag_to_validate }}
+      target_tag: ${{ inputs.stable_tag }}

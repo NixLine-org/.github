@@ -37,6 +37,7 @@ This repository contains reusable GitHub Actions workflows for the NixLine organ
   - [Flake Lock Updates](#flake-lock-updates-nixline-flake-lock-updateyml)
   - [Governance Migration](#governance-migration-migrate-governanceyml)
   - [Test Governance Migration](#test-governance-migration-test-governance-migrationyml)
+  - [Supply Chain Security Workflows](#supply-chain-security-workflows)
 - [Forking for Your Organization](#forking-for-your-organization)
 - [Workflow Best Practices](#workflow-best-practices)
 - [Consumer Workflow Setup](#consumer-workflow-setup)
@@ -192,6 +193,9 @@ This repository provides several reusable workflows for NixLine automation. Each
 | `nixline-flake-lock-update.yml` | Update flake.lock files | Any repo with flakes | Dependency management |
 | `migrate-governance.yml` | Migrate governance repositories | Organizations | Governance migration |
 | `test-governance-migration.yml` | Test migration compatibility | Governance repos | Migration testing |
+| `nixline-nixpkgs-update.yml` | Fetch latest nixpkgs commit | Baseline repos | Supply chain security |
+| `nixline-nixpkgs-validate.yml` | Validate nixpkgs updates | Baseline repos | Supply chain security |
+| `nixline-nixpkgs-promote.yml` | Promote validated updates | Baseline repos | Supply chain security |
 
 ### CI Workflow
 
@@ -1048,6 +1052,121 @@ jobs:
       dry-run-only: false  # Generates actual baseline
       baseline-ref: "github:yourorg/custom-nixline-baseline"
 ```
+
+### Supply Chain Security Workflows
+
+NixLine provides three reusable workflows that work together to automate nixpkgs dependency updates with validation and testing before promotion to stable. This implements the supply chain security best practices documented in SECURITY-BASELINE.md by pinning nixpkgs to specific commit hashes instead of branch references.
+
+**Architecture Overview:**
+
+```mermaid
+graph TD
+    A[Weekly Schedule<br/>Sunday 2 AM UTC] --> B[nixline-nixpkgs-update.yml]
+    B --> C[Fetch Latest Commit<br/>from nixos-unstable]
+    C --> D[Update flake.nix<br/>Pin to Commit Hash]
+    D --> E[Update flake.lock]
+    E --> F[Commit Changes]
+    F --> G[Tag as unstable]
+
+    G --> H[nixline-nixpkgs-validate.yml]
+    H --> I[Checkout unstable Tag]
+    I --> J[Run Comprehensive Tests]
+    J --> K{All Tests Pass?}
+
+    K -->|Yes| L[nixline-nixpkgs-promote.yml]
+    K -->|No| M[Create Issue<br/>Alert Maintainers]
+
+    L --> N[Move stable Tag<br/>to unstable Commit]
+    N --> O[Consumer Repos Update<br/>on Next Sync]
+
+    style A fill:#e1f5fe
+    style G fill:#fff3cd
+    style K fill:#ffe4b5
+    style N fill:#c8e6c9
+    style M fill:#ffcdd2
+```
+
+#### Nixpkgs Update (`nixline-nixpkgs-update.yml`)
+
+Fetches the latest nixos-unstable commit hash and updates the baseline repository's flake.nix to pin to that specific commit. This replaces branch references with explicit commit hashes for better supply chain security.
+
+**Example Usage in Baseline Repository:**
+```yaml
+# .github/workflows/update-nixpkgs.yml
+name: Update Nixpkgs
+
+on:
+  schedule:
+    - cron: '0 2 * * 0'  # Weekly on Sunday at 2 AM UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    uses: NixLine-org/.github/.github/workflows/nixline-nixpkgs-update.yml@stable
+    with:
+      unstable_tag: unstable
+      target_branch: main
+      nixpkgs_channel: nixos-unstable
+```
+
+**What It Does:**
+- Queries GitHub API for latest nixos-unstable commit
+- Updates flake.nix to replace branch reference with commit hash
+- Runs `nix flake update` to sync flake.lock
+- Commits changes and tags as "unstable"
+- Triggers validation workflow automatically
+
+#### Nixpkgs Validate (`nixline-nixpkgs-validate.yml`)
+
+Runs comprehensive validation on the unstable tag before promoting to stable. This ensures that nixpkgs updates do not break baseline functionality.
+
+**Example Usage in Baseline Repository:**
+```yaml
+# .github/workflows/validate-unstable.yml
+name: Validate Unstable Nixpkgs
+
+on:
+  push:
+    tags:
+      - unstable
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  validate:
+    uses: NixLine-org/.github/.github/workflows/nixline-nixpkgs-validate.yml@stable
+    with:
+      tag_to_validate: unstable
+      promote_on_success: true
+      stable_tag: stable
+```
+
+**Validation Steps:**
+- Verifies flake.nix uses commit hash (not branch reference)
+- Runs `nix flake check` on the baseline
+- Builds all exposed apps (sync, check, migrate-governance, etc.)
+- Tests sync and check operations in isolation
+- On success: calls promote workflow
+- On failure: creates issue with error details
+
+#### Nixpkgs Promote (`nixline-nixpkgs-promote.yml`)
+
+Promotes a validated nixpkgs update by moving the stable tag to the unstable commit. This is called automatically by the validate workflow on successful validation.
+
+**What It Does:**
+- Checks out the validated commit (unstable tag)
+- Moves stable tag to that commit
+- Pushes updated stable tag
+- Consumer repositories receive the update on their next sync
+
+**Benefits:**
+
+The supply chain update pipeline provides explicit commit pinning in flake.nix for better auditability, automated testing before production deployment, safe rollback via tag management, clear audit trail of dependency updates and weekly update schedule to balance security with stability.
 
 ---
 

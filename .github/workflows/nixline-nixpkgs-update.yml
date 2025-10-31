@@ -1,0 +1,158 @@
+name: NixLine Nixpkgs Update (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      unstable_tag:
+        description: 'Tag name for unstable nixpkgs version'
+        required: false
+        type: string
+        default: 'unstable'
+      target_branch:
+        description: 'Branch to update'
+        required: false
+        type: string
+        default: 'main'
+      nixpkgs_channel:
+        description: 'Nixpkgs channel to track'
+        required: false
+        type: string
+        default: 'nixos-unstable'
+
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write
+
+jobs:
+  update-nixpkgs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.target_branch }}
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch latest nixpkgs commit
+        id: fetch
+        run: |
+          echo "## Fetching Latest Nixpkgs Commit" >> $GITHUB_STEP_SUMMARY
+
+          # Fetch latest commit hash from nixpkgs channel
+          COMMIT_HASH=$(gh api repos/NixOS/nixpkgs/commits/${{ inputs.nixpkgs_channel }} --jq '.sha')
+          COMMIT_DATE=$(gh api repos/NixOS/nixpkgs/commits/${{ inputs.nixpkgs_channel }} --jq '.commit.committer.date')
+          COMMIT_MSG=$(gh api repos/NixOS/nixpkgs/commits/${{ inputs.nixpkgs_channel }} --jq '.commit.message' | head -n1)
+
+          echo "commit_hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "commit_date=$COMMIT_DATE" >> $GITHUB_OUTPUT
+
+          echo "**Channel:** \`${{ inputs.nixpkgs_channel }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${COMMIT_HASH:0:12}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** $COMMIT_DATE" >> $GITHUB_STEP_SUMMARY
+          echo "**Message:** $COMMIT_MSG" >> $GITHUB_STEP_SUMMARY
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update flake.nix with commit hash
+        run: |
+          echo "## Updating flake.nix" >> $GITHUB_STEP_SUMMARY
+
+          COMMIT_HASH="${{ steps.fetch.outputs.commit_hash }}"
+
+          # Replace branch reference with commit hash in flake.nix
+          sed -i "s|github:NixOS/nixpkgs/[^\"]*|github:NixOS/nixpkgs/$COMMIT_HASH|g" flake.nix
+
+          echo "\`\`\`diff" >> $GITHUB_STEP_SUMMARY
+          git diff flake.nix >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Update flake.lock
+        run: |
+          echo "## Updating flake.lock" >> $GITHUB_STEP_SUMMARY
+
+          nix flake update
+
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          git diff flake.lock | head -n 20 >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Verify flake after update
+        run: |
+          echo "## Verifying Flake" >> $GITHUB_STEP_SUMMARY
+
+          nix flake metadata
+          nix flake check --no-build || echo "Warning: flake check failed (will be validated in separate workflow)"
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected - nixpkgs is already up to date" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected - will commit and tag" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Commit changes
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          COMMIT_HASH="${{ steps.fetch.outputs.commit_hash }}"
+          SHORT_HASH="${COMMIT_HASH:0:12}"
+
+          git add flake.nix flake.lock
+
+          git commit -m "Update nixpkgs to $SHORT_HASH
+
+Automated nixpkgs update from ${{ inputs.nixpkgs_channel }}
+
+Commit: $COMMIT_HASH
+Date: ${{ steps.fetch.outputs.commit_date }}
+
+This update will be validated before promotion to stable."
+
+      - name: Push changes
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          git push origin ${{ inputs.target_branch }}
+
+      - name: Create or update unstable tag
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          echo "## Tagging as ${{ inputs.unstable_tag }}" >> $GITHUB_STEP_SUMMARY
+
+          # Delete existing tag if present
+          git tag -d ${{ inputs.unstable_tag }} || true
+          git push origin :refs/tags/${{ inputs.unstable_tag }} || true
+
+          # Create new tag
+          git tag -a ${{ inputs.unstable_tag }} -m "Nixpkgs unstable: ${{ steps.fetch.outputs.commit_hash }}"
+          git push origin ${{ inputs.unstable_tag }}
+
+          echo "Tagged as \`${{ inputs.unstable_tag }}\` - validation workflow will run next" >> $GITHUB_STEP_SUMMARY
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.changes.outputs.has_changes }}" == "true" ]; then
+            echo "**Result:** Nixpkgs updated to \`${{ steps.fetch.outputs.commit_hash }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "**Tag:** \`${{ inputs.unstable_tag }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "**Next:** Validation workflow will test before promoting to stable" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Result:** Nixpkgs is already up to date - no action needed" >> $GITHUB_STEP_SUMMARY
+          fi

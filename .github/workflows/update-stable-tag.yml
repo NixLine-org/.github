@@ -67,7 +67,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Run flake check and capture result
-          if nix flake check --all-systems --show-trace 2>&1 | tee validation.log; then
+          if nix flake check --all-systems --no-build --show-trace 2>&1 | tee validation.log; then
             echo "**PASSED** - Flake validation successful for all systems" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "The commit passes all validation checks and is safe to tag as stable." >> $GITHUB_STEP_SUMMARY

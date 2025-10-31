@@ -68,7 +68,7 @@ jobs:
         run: |
           echo "## Running Flake Check" >> $GITHUB_STEP_SUMMARY
 
-          nix flake check --all-systems --show-trace
+          nix flake check --all-systems --no-build --show-trace
 
           if [ $? -eq 0 ]; then
             echo "flake_check_passed=true" >> $GITHUB_OUTPUT

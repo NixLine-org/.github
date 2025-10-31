@@ -156,11 +156,23 @@ jobs:
           # Update flake.lock for consumers
           nix flake update
 
+          # Update consumer template flake.lock if it exists
+          if [[ -f "templates/consumer/flake.nix" ]]; then
+            echo "Updating consumer template flake.lock"
+            cd templates/consumer
+            nix flake update
+            cd ../..
+          fi
+
           # Update .stable-candidate file with promoted commit
           echo "$COMMIT" > .stable-candidate
 
           # Create audit trail commit
           git add flake.lock .stable-candidate
+          # Add consumer template flake.lock if it was updated
+          if [[ -f "templates/consumer/flake.lock" ]]; then
+            git add templates/consumer/flake.lock
+          fi
           git commit -m "Mark $SHORT_HASH as ${{ inputs.stable_tag }} candidate
 
           Promoted commit: $COMMIT

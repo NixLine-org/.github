@@ -179,6 +179,7 @@ jobs:
           git pull origin main
 
       - name: Update flake.lock and create audit trail
+        id: audit
         if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true' && inputs.promotion_target == 'stable'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -203,76 +204,89 @@ jobs:
           # Update .stable-candidate file with promoted commit
           echo "$COMMIT" > .stable-candidate
 
-          # Create audit trail commit
+          # Create audit trail commit only if there are changes
           git add flake.lock .stable-candidate
           # Add consumer template flake.lock if it was updated
           if [[ -f "templates/consumer/flake.lock" ]]; then
             git add templates/consumer/flake.lock
           fi
-          git commit -m "Mark $SHORT_HASH as ${{ inputs.promotion_target }} candidate
+
+          # Check if there are changes to commit
+          if git diff --cached --quiet; then
+            echo "No changes to commit - flake.lock and .stable-candidate are already up to date"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            git commit -m "Mark $SHORT_HASH as ${{ inputs.promotion_target }} candidate
 
           Promoted commit: $COMMIT
           Promotion type: ${{ steps.candidate.outputs.promotion_type }}
           Promotion target: ${{ inputs.promotion_target }}
           Validation passed: ${{ steps.validate.outputs.validation_passed }}
           Updated flake.lock for consumers"
-
-          # Create branch for audit commit (to work with branch protection)
-          BRANCH_NAME="stable-promotion-$(date +%s)"
-          git checkout -b "$BRANCH_NAME"
-
-          # Try to push the branch, handling potential conflicts
-          if ! git push origin "$BRANCH_NAME"; then
-            echo "Branch push failed, attempting to resolve conflicts"
-            git checkout main
-            git pull origin main --rebase
-
-            # Re-apply our changes on top of latest main
-            nix flake update
-            if [[ -f "templates/consumer/flake.nix" ]]; then
-              cd templates/consumer
-              nix flake update
-              cd ../..
-            fi
-            echo "$COMMIT" > .stable-candidate
-
-            # Re-commit with latest changes
-            git add flake.lock .stable-candidate
-            if [[ -f "templates/consumer/flake.lock" ]]; then
-              git add templates/consumer/flake.lock
-            fi
-            git commit --amend --no-edit
-
-            # Recreate branch
-            git branch -D "$BRANCH_NAME" || true
-            git checkout -b "$BRANCH_NAME"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
           fi
 
-          git push origin "$BRANCH_NAME" --force-with-lease
+          # Only create PR if there are changes to commit
+          if [ "${{ steps.audit.outputs.has_changes }}" == "true" ]; then
+            # Create branch for audit commit (to work with branch protection)
+            BRANCH_NAME="stable-promotion-$(date +%s)"
+            git checkout -b "$BRANCH_NAME"
 
-          # Create PR for the audit commit
-          gh pr create \
-            --title "Promote $SHORT_HASH to ${{ inputs.promotion_target }}" \
-            --body "Automated promotion of commit $COMMIT to ${{ inputs.promotion_target }}.
+            # Try to push the branch, handling potential conflicts
+            if ! git push origin "$BRANCH_NAME"; then
+              echo "Branch push failed, attempting to resolve conflicts"
+              git checkout main
+              git pull origin main --rebase
 
-          **Promotion Details:**
-          - Commit: $COMMIT
-          - Type: ${{ steps.candidate.outputs.promotion_type }}
-          - Target: ${{ inputs.promotion_target }}
-          - Validation: ✅ Passed
+              # Re-apply our changes on top of latest main
+              nix flake update
+              if [[ -f "templates/consumer/flake.nix" ]]; then
+                cd templates/consumer
+                nix flake update
+                cd ../..
+              fi
+              echo "$COMMIT" > .stable-candidate
 
-          This PR updates flake.lock for consumers and creates the promotion audit trail." \
-            --base main \
-            --head "$BRANCH_NAME"
+              # Re-commit with latest changes
+              git add flake.lock .stable-candidate
+              if [[ -f "templates/consumer/flake.lock" ]]; then
+                git add templates/consumer/flake.lock
+              fi
+              git commit --amend --no-edit
 
-          # Auto-merge the PR with admin override
-          PR_NUMBER=$(gh pr list --head "$BRANCH_NAME" --json number --jq '.[0].number')
-          gh pr merge "$PR_NUMBER" --admin --squash
+              # Recreate branch
+              git branch -D "$BRANCH_NAME" || true
+              git checkout -b "$BRANCH_NAME"
+            fi
 
-          # Delete the branch after successful merge
-          git push origin --delete "$BRANCH_NAME" || echo "Branch already deleted"
+            git push origin "$BRANCH_NAME" --force-with-lease
 
-          echo "Created audit trail commit for $COMMIT with updated flake.lock and cleaned up branch"
+            # Create PR for the audit commit
+            gh pr create \
+              --title "Promote $SHORT_HASH to ${{ inputs.promotion_target }}" \
+              --body "Automated promotion of commit $COMMIT to ${{ inputs.promotion_target }}.
+
+            **Promotion Details:**
+            - Commit: $COMMIT
+            - Type: ${{ steps.candidate.outputs.promotion_type }}
+            - Target: ${{ inputs.promotion_target }}
+            - Validation: ✅ Passed
+
+            This PR updates flake.lock for consumers and creates the promotion audit trail." \
+              --base main \
+              --head "$BRANCH_NAME"
+
+            # Auto-merge the PR with admin override
+            PR_NUMBER=$(gh pr list --head "$BRANCH_NAME" --json number --jq '.[0].number')
+            gh pr merge "$PR_NUMBER" --admin --squash
+
+            # Delete the branch after successful merge
+            git push origin --delete "$BRANCH_NAME" || echo "Branch already deleted"
+
+            echo "Created audit trail commit for $COMMIT with updated flake.lock and cleaned up branch"
+          else
+            echo "No audit trail commit needed - no changes to flake.lock or .stable-candidate"
+          fi
 
       - name: Update promotion tag
         if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true'

@@ -269,7 +269,10 @@ jobs:
           PR_NUMBER=$(gh pr list --head "$BRANCH_NAME" --json number --jq '.[0].number')
           gh pr merge "$PR_NUMBER" --admin --squash
 
-          echo "Created audit trail commit for $COMMIT with updated flake.lock"
+          # Delete the branch after successful merge
+          git push origin --delete "$BRANCH_NAME" || echo "Branch already deleted"
+
+          echo "Created audit trail commit for $COMMIT with updated flake.lock and cleaned up branch"
 
       - name: Update promotion tag
         if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true'
@@ -288,50 +291,9 @@ jobs:
 
           echo "Updated $TARGET_TAG tag to $COMMIT"
 
-      - name: Cleanup marker file
-        if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true' && steps.candidate.outputs.promotion_type == 'pr'
-        uses: actions/github-script@v7
-        env:
-          SHORT_HASH: ${{ steps.candidate.outputs.short_hash }}
-        with:
-          script: |
-            const shortHash = process.env.SHORT_HASH;
-
-            try {
-              // Get the current file to get its SHA
-              const file = await github.rest.repos.getContent({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                path: '.stable-candidate',
-                ref: 'main'
-              });
-
-              // Delete the file via API
-              await github.rest.repos.deleteFile({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                path: '.stable-candidate',
-                message: 'Remove stable candidate marker after promotion',
-                sha: file.data.sha,
-                branch: 'main'
-              });
-
-              console.log('Removed .stable-candidate from main');
-            } catch (error) {
-              console.log('Failed to remove .stable-candidate (may not exist): ' + error.message);
-            }
-
-            // Delete promotion branch
-            try {
-              await github.rest.git.deleteRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: 'heads/promote-' + shortHash
-              });
-              console.log('Deleted promotion branch');
-            } catch (error) {
-              console.log('Failed to delete branch (may not exist): ' + error.message);
-            }
+      # Note: Cleanup is handled by the audit trail step which updates .stable-candidate
+      # and the branch cleanup is handled by the stable candidate update workflow
+      # No additional cleanup needed here to avoid branch protection violations
 
       - name: Create validation failure issue
         if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'false'

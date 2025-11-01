@@ -190,7 +190,8 @@ This repository provides several reusable workflows for NixLine automation. Each
 | `nixline-feature-branch-validation.yml` | **Comprehensive feature branch validation with security checks** | Baseline repos | Secure feature branch validation |
 | `nixline-branch-validation.yml` | **Complete automation: unstable → main → stable** | Baseline repos | Complete automation workflow |
 | `nixline-policy-sync-smart.yml` | **Smart policy sync (RECOMMENDED)** | Consumer repos | Adaptive |
-| `nixline-promote-to-stable.yml` | Promote commits to stable with validation | Baseline repos | Release management |
+| `nixline-promote-to-stable.yml` | **Promote commits to stable with validation and audit trail** | Baseline repos | Release management |
+| `nixline-stable-candidate-update.yml` | **Update .stable-candidate tracking file with automation safeguards** | Baseline repos | Stable candidate management |
 | `nixline-policy-sync.yml` | ~~Direct policy sync~~ **DEPRECATED** | Legacy only | Direct commit |
 | `nixline-policy-sync-pr.yml` | ~~Policy sync with PRs~~ **DEPRECATED** | Legacy only | Auto-approved PRs |
 | `nixline-auto-approve.yml` | Auto-approve PRs | Consumer repos | Auto-approved PRs |
@@ -320,6 +321,219 @@ jobs:
 - **Fast Feedback**: Issues created with detailed error information for failures
 - **Full Audit Trail**: PR history with promote-to-stable labels maintained for all changes
 - **Stable Tag Automation**: Automatic stable tag updates when main branch CI passes
+
+---
+
+## Baseline Repository Automation Pipeline
+
+The automation pipeline for baseline repositories provides end-to-end automation from development to production deployment with comprehensive validation, audit trails, and safeguards.
+
+### Architecture Overview
+
+```mermaid
+graph TD
+    A[Push to main] --> B[Baseline CI<br/>Validation]
+    B --> C{Validation<br/>Passed?}
+    C -->|Yes| D[Update Stable Candidate<br/>nixline-stable-candidate-update.yml]
+    C -->|No| E[❌ Build Fails]
+
+    D --> F[Create PR with<br/>Candidate Update]
+    F --> G[Auto-merge PR]
+    G --> H[Trigger Stable Promotion<br/>nixline-promote-to-stable.yml]
+
+    H --> I[Comprehensive Validation<br/>• Flake check<br/>• App verification<br/>• Content validation]
+    I --> J{Promotion<br/>Validation?}
+
+    J -->|Pass| K[Create Audit Trail<br/>• Update flake.lock<br/>• Create promotion commit]
+    J -->|Fail| L[Create Issue<br/>Alert maintainers]
+
+    K --> M[Update Stable Tag]
+    M --> N[Consumer Repos<br/>Get Updates]
+
+    style D fill:#e1f5fe
+    style H fill:#fff3cd
+    style K fill:#c8e6c9
+    style M fill:#c8e6c9
+    style E fill:#ffcdd2
+    style L fill:#ffcdd2
+```
+
+### Core Workflows
+
+#### Baseline CI with Automation
+**Purpose**: Central validation and automation orchestration for baseline repositories
+
+**Key Features**:
+- **Comprehensive Validation**: Flake integrity, app functionality, pack definitions
+- **Automation Pipeline**: Automatic stable candidate updates and promotion triggers
+- **Manual Trigger Support**: Available for validation and optionally force stable updates
+- **Infinite Loop Prevention**: Filters automation commits to prevent endless cycles
+- **Consumer Integration**: Updates propagate safely through organization
+
+**Usage**:
+```yaml
+# .github/workflows/ci.yml (Baseline Repository)
+name: Baseline CI
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: write
+  actions: write
+  pull-requests: write
+
+jobs:
+  validate-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+      - name: Validate flake integrity
+        run: nix flake check
+      - name: Test baseline apps
+        run: |
+          nix run .#sync -- --dry-run
+          nix run .#list-licenses
+          nix run .#create-pack -- --list-examples
+
+  update-stable-candidate:
+    uses: YOUR-ORG/.github/.github/workflows/nixline-stable-candidate-update.yml@stable
+    needs: validate-baseline
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+       !contains(github.event.head_commit.message, 'Mark ') &&
+       !contains(github.event.head_commit.message, 'stable candidate')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       (github.ref == 'refs/heads/main' || github.event.inputs.force_stable_update == 'true'))
+    with:
+      commit_hash: ${{ github.sha }}
+      branch_prefix: "automation/stable-candidate"
+
+  trigger-stable-promotion:
+    runs-on: ubuntu-latest
+    needs: update-stable-candidate
+    steps:
+      - name: Trigger stable promotion
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'promote-to-stable.yml',
+              ref: 'main',
+              inputs: {
+                commit_hash: '${{ github.sha }}',
+                promotion_target: 'stable',
+                automation_trigger: 'true'
+              }
+            });
+```
+
+#### Stable Candidate Management (`nixline-stable-candidate-update.yml`)
+**Purpose**: Safely update .stable-candidate tracking file with automation safeguards
+
+**Key Features**:
+- **File Protection**: Ensures .stable-candidate is never deleted, only updated
+- **PR-based Updates**: Creates PRs for all candidate updates for audit trail
+- **Auto-merge Support**: Integrates with branch protection via automatic PR merge
+- **Branch Cleanup**: Automatically removes automation branches after merge
+- **Audit Trail**: Maintains complete history of stable candidate selections
+
+**Integration**: Called automatically by baseline CI workflows
+
+#### Stable Tag Promotion (`nixline-promote-to-stable.yml`)
+**Purpose**: Promote validated commits to stable with comprehensive validation and audit trail
+
+**Key Features**:
+- **Comprehensive Validation**: Flake check, app verification, content validation
+- **Audit Trail Creation**: Updates flake.lock, creates promotion commits
+- **Consumer Template Updates**: Automatically updates consumer template dependencies
+- **Manual and Automated Modes**: Supports both manual dispatch and automation triggers
+- **Validation Failure Handling**: Creates detailed issues when promotion fails
+
+**Usage**:
+```yaml
+# .github/workflows/promote-to-stable.yml (Baseline Repository)
+name: Promote to Stable
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      commit_hash:
+        description: 'Commit hash to promote (defaults to HEAD of main)'
+        required: false
+        type: string
+      promotion_target:
+        description: 'Promotion target'
+        required: false
+        type: choice
+        options:
+          - stable
+          - unstable
+        default: stable
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+  issues: write
+
+jobs:
+  promote-pr:
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'promote-to-stable')
+    uses: YOUR-ORG/.github/.github/workflows/nixline-promote-to-stable.yml@stable
+    with:
+      promotion_mode: pr-based
+      stable_tag: stable
+
+  promote-manual:
+    if: github.event_name == 'workflow_dispatch'
+    uses: YOUR-ORG/.github/.github/workflows/nixline-promote-to-stable.yml@stable
+    with:
+      promotion_mode: ${{ github.event.inputs.automation_trigger == 'true' && 'automated' || 'manual' }}
+      commit_hash: ${{ github.event.inputs.commit_hash }}
+      stable_tag: stable
+      promotion_target: ${{ github.event.inputs.promotion_target }}
+```
+
+### Automation Safeguards
+
+**File Protection**:
+- `.stable-candidate` file is protected from deletion, only updates allowed
+- Verification checks ensure file exists after every operation
+- Creates file if missing during first-time setup
+
+**Infinite Loop Prevention**:
+- Filters commit messages containing "Mark " or "stable candidate"
+- Prevents automation from triggering additional automation cycles
+- Uses automation branch naming patterns to avoid security rules
+
+**Branch Protection Compliance**:
+- All updates use PRs instead of direct pushes when branch protection is enabled
+- Automatic cleanup of automation branches after merge
+- Respects repository security rules and access controls
+
+**Validation Before Promotion**:
+- Comprehensive flake validation with `nix flake check`
+- App functionality testing with dry-run operations
+- Content validation to prevent placeholder text promotion
+- Detailed error reporting and issue creation on failures
+
+### Benefits
+
+**Complete Automation**: End-to-end automation from development to production with zero manual steps for validated changes
+
+**Audit Trail**: Complete history of all promotions, validations, and decisions through PR system and issue tracking
+
+**Safety**: Multiple validation layers prevent broken code from reaching stable, with automatic rollback capabilities
+
+**Scalability**: Handles high-frequency updates without rate limiting or conflict issues
+
+**Developer Experience**: Immediate feedback on validation failures with detailed error reports and automatic issue assignment
 
 ---
 

@@ -101,9 +101,17 @@ jobs:
         if: ${{ steps.extract.outputs.action == 'actions/checkout' }}
         run: |
           echo "Testing actions/checkout@v${{ steps.extract.outputs.version }}"
-          # Test checkout by using the detected version
-          curl -f "https://api.github.com/repos/actions/checkout/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
-          echo "✅ actions/checkout@v${{ steps.extract.outputs.version }} is available"
+          VERSION="${{ steps.extract.outputs.version }}"
+
+          # Try multiple version formats for checkout
+          if curl -f "https://api.github.com/repos/actions/checkout/releases/tags/v$VERSION" > /dev/null 2>&1; then
+            echo "✅ actions/checkout@v$VERSION is available"
+          elif curl -f "https://api.github.com/repos/actions/checkout/releases/tags/v$VERSION.0.0" > /dev/null 2>&1; then
+            echo "✅ actions/checkout@v$VERSION.0.0 is available"
+          else
+            echo "❌ Could not find actions/checkout version $VERSION"
+            exit 1
+          fi
 
       - name: Test actions/setup-node
         if: ${{ steps.extract.outputs.action == 'actions/setup-node' }}
@@ -139,92 +147,80 @@ jobs:
             exit 1
           fi
 
-      - name: Test actions/upload-artifact
-        if: ${{ steps.extract.outputs.action == 'actions/upload-artifact' }}
+      - name: Test standard GitHub actions and third-party actions
         run: |
-          echo "Testing actions/upload-artifact@v${{ steps.extract.outputs.version }}"
-          # Test by verifying the version exists
-          curl -f "https://api.github.com/repos/actions/upload-artifact/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
-          echo "✅ actions/upload-artifact@v${{ steps.extract.outputs.version }} is available"
+          ACTION="${{ steps.extract.outputs.action }}"
+          VERSION="${{ steps.extract.outputs.version }}"
 
-      - name: Test peter-evans actions
-        if: ${{ contains(steps.extract.outputs.action, 'peter-evans') }}
-        run: |
-          echo "Testing peter-evans action: ${{ steps.extract.outputs.action }}@v${{ steps.extract.outputs.version }}"
-          echo "Note: peter-evans actions require write permissions, testing syntax only"
-          # Validate action exists and has correct format
-          curl -f "https://api.github.com/repos/${{ steps.extract.outputs.action }}/releases" > /dev/null
-          echo "Action repository is accessible"
+          # Function to test action versions with multiple format attempts
+          test_action_version() {
+            local action=$1
+            local version=$2
 
-      - name: Test GitHub CodeQL action
-        if: ${{ contains(steps.extract.outputs.action, 'github/codeql-action') }}
-        run: |
-          echo "Testing CodeQL action: ${{ steps.extract.outputs.action }}@v${{ steps.extract.outputs.version }}"
-          # CodeQL actions require specific setup, testing availability only
-          curl -f "https://api.github.com/repos/${{ steps.extract.outputs.action }}/releases" > /dev/null
-          echo "CodeQL action repository is accessible"
+            echo "Testing $action@v$version"
 
-      - name: Test lewagon/wait-on-check-action
-        if: ${{ steps.extract.outputs.action == 'lewagon/wait-on-check-action' }}
-        run: |
-          echo "Testing wait-on-check-action: ${{ steps.extract.outputs.action }}@v${{ steps.extract.outputs.version }}"
-          # This action requires specific inputs, testing availability only
-          curl -f "https://api.github.com/repos/${{ steps.extract.outputs.action }}/releases" > /dev/null
-          echo "wait-on-check-action repository is accessible"
+            # Try exact version first (v6)
+            if curl -f "https://api.github.com/repos/$action/releases/tags/v$version" > /dev/null 2>&1; then
+              echo "✅ $action@v$version is available"
+              return 0
+            fi
 
-      - name: Test actions/cache
-        if: ${{ steps.extract.outputs.action == 'actions/cache' }}
-        run: |
-          echo "Testing actions/cache@v${{ steps.extract.outputs.version }}"
-          curl -f "https://api.github.com/repos/actions/cache/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
-          echo "✅ actions/cache@v${{ steps.extract.outputs.version }} is available"
+            # Try semantic version (v6.0.0)
+            if curl -f "https://api.github.com/repos/$action/releases/tags/v$version.0.0" > /dev/null 2>&1; then
+              echo "✅ $action@v$version.0.0 is available"
+              return 0
+            fi
 
-      - name: Test actions/github-script
-        if: ${{ steps.extract.outputs.action == 'actions/github-script' }}
-        run: |
-          echo "Testing actions/github-script@v${{ steps.extract.outputs.version }}"
-          curl -f "https://api.github.com/repos/actions/github-script/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
-          echo "✅ actions/github-script@v${{ steps.extract.outputs.version }} is available"
+            # Try without v prefix
+            if curl -f "https://api.github.com/repos/$action/releases/tags/$version" > /dev/null 2>&1; then
+              echo "✅ $action@$version is available"
+              return 0
+            fi
 
-      - name: Test cachix/install-nix-action
-        if: ${{ steps.extract.outputs.action == 'cachix/install-nix-action' }}
-        run: |
-          echo "Testing cachix/install-nix-action@v${{ steps.extract.outputs.version }}"
-          curl -f "https://api.github.com/repos/cachix/install-nix-action/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
-          echo "✅ cachix/install-nix-action@v${{ steps.extract.outputs.version }} is available"
+            # Try semantic without v
+            if curl -f "https://api.github.com/repos/$action/releases/tags/$version.0.0" > /dev/null 2>&1; then
+              echo "✅ $action@$version.0.0 is available"
+              return 0
+            fi
 
-      - name: Test dependabot/fetch-metadata
-        if: ${{ steps.extract.outputs.action == 'dependabot/fetch-metadata' }}
-        run: |
-          echo "Testing dependabot/fetch-metadata@v${{ steps.extract.outputs.version }}"
-          curl -f "https://api.github.com/repos/dependabot/fetch-metadata/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
-          echo "✅ dependabot/fetch-metadata@v${{ steps.extract.outputs.version }} is available"
+            echo "❌ Could not find $action version $version"
+            return 1
+          }
 
-      - name: Test hmarr/auto-approve-action
-        if: ${{ steps.extract.outputs.action == 'hmarr/auto-approve-action' }}
-        run: |
-          echo "Testing hmarr/auto-approve-action@v${{ steps.extract.outputs.version }}"
-          curl -f "https://api.github.com/repos/hmarr/auto-approve-action/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
-          echo "✅ hmarr/auto-approve-action@v${{ steps.extract.outputs.version }} is available"
-
-      - name: Test wagoid/commitlint-github-action
-        if: ${{ steps.extract.outputs.action == 'wagoid/commitlint-github-action' }}
-        run: |
-          echo "Testing wagoid/commitlint-github-action@v${{ steps.extract.outputs.version }}"
-          curl -f "https://api.github.com/repos/wagoid/commitlint-github-action/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
-          echo "✅ wagoid/commitlint-github-action@v${{ steps.extract.outputs.version }} is available"
-
-      - name: Test aquasecurity/trivy-action
-        if: ${{ steps.extract.outputs.action == 'aquasecurity/trivy-action' }}
-        run: |
-          echo "Testing aquasecurity/trivy-action@${{ steps.extract.outputs.version }}"
-          # Note: trivy-action often uses @master, but test version if specified
-          if [[ "${{ steps.extract.outputs.version }}" != "master" ]]; then
-            curl -f "https://api.github.com/repos/aquasecurity/trivy-action/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
-          else
-            curl -f "https://api.github.com/repos/aquasecurity/trivy-action" > /dev/null
-          fi
-          echo "✅ aquasecurity/trivy-action@${{ steps.extract.outputs.version }} is available"
+          # Test the action based on its type
+          case "$ACTION" in
+            "actions/upload-artifact"|"actions/cache"|"actions/github-script"|"cachix/install-nix-action"|"dependabot/fetch-metadata"|"hmarr/auto-approve-action"|"wagoid/commitlint-github-action")
+              test_action_version "$ACTION" "$VERSION"
+              ;;
+            "peter-evans/"*)
+              echo "Testing peter-evans action: $ACTION@v$VERSION"
+              echo "Note: peter-evans actions require write permissions, testing availability only"
+              curl -f "https://api.github.com/repos/$ACTION/releases" > /dev/null
+              echo "✅ $ACTION repository is accessible"
+              ;;
+            "github/codeql-action/"*)
+              echo "Testing CodeQL action: $ACTION@v$VERSION"
+              curl -f "https://api.github.com/repos/$ACTION/releases" > /dev/null
+              echo "✅ CodeQL action repository is accessible"
+              ;;
+            "lewagon/wait-on-check-action")
+              echo "Testing wait-on-check-action: $ACTION@v$VERSION"
+              curl -f "https://api.github.com/repos/$ACTION/releases" > /dev/null
+              echo "✅ wait-on-check-action repository is accessible"
+              ;;
+            "aquasecurity/trivy-action")
+              echo "Testing aquasecurity/trivy-action@$VERSION"
+              if [[ "$VERSION" != "master" ]]; then
+                test_action_version "$ACTION" "$VERSION"
+              else
+                curl -f "https://api.github.com/repos/$ACTION" > /dev/null
+                echo "✅ trivy-action@master is accessible"
+              fi
+              ;;
+            *)
+              echo "Skipping standard test - handled by specific action tests or generic test"
+              ;;
+          esac
 
       - name: Test generic action availability
         run: |

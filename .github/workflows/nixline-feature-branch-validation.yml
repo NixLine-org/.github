@@ -35,6 +35,11 @@ on:
         required: false
         type: boolean
         default: true
+      enable_dependency_scanning:
+        description: 'Enable dependency vulnerability scanning with Trivy'
+        required: false
+        type: boolean
+        default: false
 
 # Note: This workflow requires the following permissions:
 # permissions:
@@ -73,6 +78,7 @@ jobs:
 
   # Dependency and secret scanning
   dependency-security:
+    if: inputs.enable_dependency_scanning
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

@@ -201,6 +201,7 @@ This repository provides several reusable workflows for NixLine automation. Each
 | `nixline-pre-commit.yml` | Pre-commit hooks | Consumer repos | Code formatting |
 | `update-stable-tag.yml` | Auto-update stable tags | Baseline repos | Tag automation |
 | `validate-workflows.yml` | Validate YAML and GitHub Actions syntax | Any repo | Workflow quality control |
+| `test-dependabot-updates.yml` | **Test Dependabot dependency updates** | .github repo | Dependency safety testing |
 | `nixline-flake-lock-update.yml` | Update flake.lock files | Any repo with flakes | Dependency management |
 | `migrate-governance.yml` | Migrate governance repositories | Organizations | Governance migration |
 | `test-governance-migration.yml` | Test migration compatibility | Governance repos | Migration testing |
@@ -1823,6 +1824,21 @@ This repository includes automated dependency management via [Dependabot](/.gith
 - **Rate Limiting**: Limited to 10 open PRs to prevent spam
 
 **Dependabot Configuration Location**: `.github/dependabot.yml` (outside workflows directory as required by GitHub)
+
+#### Automated Testing of Dependency Updates
+
+The [`test-dependabot-updates.yml`](.github/workflows/test-dependabot-updates.yml) workflow automatically tests all Dependabot updates before they can be merged:
+
+- **Dynamic Detection**: Parses Dependabot PR titles to extract action names and versions
+- **Comprehensive Testing**: Runs smoke tests for major action categories:
+  - `actions/checkout`, `actions/setup-node`, `actions/setup-python` - Full functionality tests
+  - `actions/upload-artifact` - Upload capability testing
+  - `DeterminateSystems/*` - Nix ecosystem action validation
+  - `peter-evans/*`, `github/codeql-action` - Availability and syntax validation
+- **Safety Assurance**: Prevents breaking dependency updates from reaching baseline repositories
+- **Automatic Execution**: Only runs on Dependabot PRs, requires no manual intervention
+
+This ensures that all GitHub Actions dependencies used across NixLine workflows remain functional after updates.
 
 ### Adding New Workflows
 

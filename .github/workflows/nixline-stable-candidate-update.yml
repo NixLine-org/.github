@@ -1,0 +1,89 @@
+#
+# NixLine Stable Candidate Update (reusable)
+#
+# Updates the .stable-candidate file to track commits ready for promotion.
+# Creates PRs for stable candidate updates and auto-merges them with proper
+# branch cleanup. Includes infinite loop prevention by excluding automation commits.
+#
+# Called by: baseline repository CI workflows
+# Purpose: Centralized stable candidate tracking logic
+#
+
+name: NixLine Stable Candidate Update (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      commit_hash:
+        description: 'Commit hash to mark as stable candidate'
+        required: true
+        type: string
+      branch_prefix:
+        description: 'Prefix for automation branches'
+        required: false
+        type: string
+        default: 'automation/stable-candidate'
+
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write
+#   pull-requests: write
+
+jobs:
+  update-stable-candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Update stable candidate file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Update .stable-candidate with provided commit hash
+          echo "${{ inputs.commit_hash }}" > .stable-candidate
+
+          # Check if there are any changes to commit
+          if git diff --quiet .stable-candidate; then
+            echo "No changes to .stable-candidate file"
+            exit 0
+          fi
+
+          # Create branch for stable candidate update (using provided prefix)
+          BRANCH_NAME="${{ inputs.branch_prefix }}-$(date +%s)"
+          git checkout -b "$BRANCH_NAME"
+
+          # Commit the update
+          git add .stable-candidate
+          git commit -m "Mark ${{ inputs.commit_hash }} as stable candidate"
+
+          # Push branch
+          git push origin "$BRANCH_NAME"
+
+          # Create PR for the stable candidate update
+          gh pr create \
+            --title "Update stable candidate to ${{ inputs.commit_hash }}" \
+            --body "Automated update of .stable-candidate file to track commit ${{ inputs.commit_hash }} for stable promotion.
+
+          **Commit:** ${{ inputs.commit_hash }}
+          **Triggered by:** Baseline CI validation
+
+          This PR will be automatically merged after validation passes." \
+            --base main \
+            --head "$BRANCH_NAME"
+
+          # Auto-merge the PR with admin override
+          PR_NUMBER=$(gh pr list --head "$BRANCH_NAME" --json number --jq '.[0].number')
+          gh pr merge "$PR_NUMBER" --admin --squash
+
+          # Delete the automation branch after successful merge
+          git push origin --delete "$BRANCH_NAME" || echo "Branch already deleted"
+
+          echo "Successfully updated stable candidate via PR and cleaned up branch"

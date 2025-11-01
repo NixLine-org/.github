@@ -185,7 +185,9 @@ jobs:
 
           The changes have been validated with \`nix flake check\`."
 
-            PR_URL=$(gh pr create --title "$PR_TITLE" --body "$PR_BODY" --base ${{ github.ref_name }} --head "$BRANCH_NAME")
+            # Determine base branch (always use main for PRs, regardless of trigger)
+            BASE_BRANCH="main"
+            PR_URL=$(gh pr create --title "$PR_TITLE" --body "$PR_BODY" --base "$BASE_BRANCH" --head "$BRANCH_NAME")
             echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
 
             # Enable auto-merge if requested
@@ -198,9 +200,9 @@ jobs:
               echo "**Status:** PR created: $PR_URL" >> $GITHUB_STEP_SUMMARY
             fi
           else
-            # Direct push mode
+            # Direct push mode - always push to main branch
             git commit -m "$FULL_COMMIT_MSG"
-            git push origin ${{ github.ref_name }}
+            git push origin main
 
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Status:** Flake lock updated and committed successfully" >> $GITHUB_STEP_SUMMARY

@@ -14,6 +14,7 @@ name: Test Dependabot Updates
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    # Note: Job only runs for Dependabot PRs via if condition
 
 permissions:
   contents: read
@@ -57,17 +58,44 @@ jobs:
         if: ${{ contains(steps.extract.outputs.action, 'DeterminateSystems') }}
         run: |
           echo "Testing DeterminateSystems action: ${{ steps.extract.outputs.action }}@v${{ steps.extract.outputs.version }}"
-          # Create minimal test workflow to verify action loads
-          cat > test-workflow.yml << EOF
-          name: Test
-          on: workflow_dispatch
-          jobs:
-            test:
-              runs-on: ubuntu-latest
-              steps:
-                - uses: ${{ steps.extract.outputs.action }}@v${{ steps.extract.outputs.version }}
-          EOF
-          echo "Action appears to be valid (syntax check passed)"
+          # Verify the action version exists on GitHub
+          curl -f "https://api.github.com/repos/${{ steps.extract.outputs.action }}/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
+          echo "✅ DeterminateSystems action ${{ steps.extract.outputs.action }}@v${{ steps.extract.outputs.version }} is available"
+
+          # Test specific DeterminateSystems actions functionality
+          case "${{ steps.extract.outputs.action }}" in
+            "DeterminateSystems/nix-installer-action")
+              echo "Testing nix-installer-action functionality..."
+              # This action installs Nix, so we can't fully test without affecting the runner
+              curl -f "https://raw.githubusercontent.com/${{ steps.extract.outputs.action }}/v${{ steps.extract.outputs.version }}/action.yml" > /dev/null
+              echo "✅ nix-installer-action definition is accessible"
+              ;;
+            "DeterminateSystems/magic-nix-cache-action")
+              echo "Testing magic-nix-cache-action functionality..."
+              curl -f "https://raw.githubusercontent.com/${{ steps.extract.outputs.action }}/v${{ steps.extract.outputs.version }}/action.yml" > /dev/null
+              echo "✅ magic-nix-cache-action definition is accessible"
+              ;;
+            "DeterminateSystems/flake-checker-action")
+              echo "Testing flake-checker-action functionality..."
+              curl -f "https://raw.githubusercontent.com/${{ steps.extract.outputs.action }}/v${{ steps.extract.outputs.version }}/action.yml" > /dev/null
+              echo "✅ flake-checker-action definition is accessible"
+              ;;
+            "DeterminateSystems/update-flake-lock")
+              echo "Testing update-flake-lock functionality..."
+              curl -f "https://raw.githubusercontent.com/${{ steps.extract.outputs.action }}/v${{ steps.extract.outputs.version }}/action.yml" > /dev/null
+              echo "✅ update-flake-lock definition is accessible"
+              ;;
+            "DeterminateSystems/determinate-nix-action")
+              echo "Testing determinate-nix-action functionality..."
+              curl -f "https://raw.githubusercontent.com/${{ steps.extract.outputs.action }}/v${{ steps.extract.outputs.version }}/action.yml" > /dev/null
+              echo "✅ determinate-nix-action definition is accessible"
+              ;;
+            *)
+              echo "Testing generic DeterminateSystems action functionality..."
+              curl -f "https://raw.githubusercontent.com/${{ steps.extract.outputs.action }}/v${{ steps.extract.outputs.version }}/action.yml" > /dev/null
+              echo "✅ Action definition is accessible"
+              ;;
+          esac
 
       - name: Test actions/checkout
         if: ${{ steps.extract.outputs.action == 'actions/checkout' }}
@@ -125,6 +153,60 @@ jobs:
           # This action requires specific inputs, testing availability only
           curl -f "https://api.github.com/repos/${{ steps.extract.outputs.action }}/releases" > /dev/null
           echo "wait-on-check-action repository is accessible"
+
+      - name: Test actions/cache
+        if: ${{ steps.extract.outputs.action == 'actions/cache' }}
+        run: |
+          echo "Testing actions/cache@v${{ steps.extract.outputs.version }}"
+          curl -f "https://api.github.com/repos/actions/cache/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
+          echo "✅ actions/cache@v${{ steps.extract.outputs.version }} is available"
+
+      - name: Test actions/github-script
+        if: ${{ steps.extract.outputs.action == 'actions/github-script' }}
+        run: |
+          echo "Testing actions/github-script@v${{ steps.extract.outputs.version }}"
+          curl -f "https://api.github.com/repos/actions/github-script/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
+          echo "✅ actions/github-script@v${{ steps.extract.outputs.version }} is available"
+
+      - name: Test cachix/install-nix-action
+        if: ${{ steps.extract.outputs.action == 'cachix/install-nix-action' }}
+        run: |
+          echo "Testing cachix/install-nix-action@v${{ steps.extract.outputs.version }}"
+          curl -f "https://api.github.com/repos/cachix/install-nix-action/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
+          echo "✅ cachix/install-nix-action@v${{ steps.extract.outputs.version }} is available"
+
+      - name: Test dependabot/fetch-metadata
+        if: ${{ steps.extract.outputs.action == 'dependabot/fetch-metadata' }}
+        run: |
+          echo "Testing dependabot/fetch-metadata@v${{ steps.extract.outputs.version }}"
+          curl -f "https://api.github.com/repos/dependabot/fetch-metadata/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
+          echo "✅ dependabot/fetch-metadata@v${{ steps.extract.outputs.version }} is available"
+
+      - name: Test hmarr/auto-approve-action
+        if: ${{ steps.extract.outputs.action == 'hmarr/auto-approve-action' }}
+        run: |
+          echo "Testing hmarr/auto-approve-action@v${{ steps.extract.outputs.version }}"
+          curl -f "https://api.github.com/repos/hmarr/auto-approve-action/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
+          echo "✅ hmarr/auto-approve-action@v${{ steps.extract.outputs.version }} is available"
+
+      - name: Test wagoid/commitlint-github-action
+        if: ${{ steps.extract.outputs.action == 'wagoid/commitlint-github-action' }}
+        run: |
+          echo "Testing wagoid/commitlint-github-action@v${{ steps.extract.outputs.version }}"
+          curl -f "https://api.github.com/repos/wagoid/commitlint-github-action/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
+          echo "✅ wagoid/commitlint-github-action@v${{ steps.extract.outputs.version }} is available"
+
+      - name: Test aquasecurity/trivy-action
+        if: ${{ steps.extract.outputs.action == 'aquasecurity/trivy-action' }}
+        run: |
+          echo "Testing aquasecurity/trivy-action@${{ steps.extract.outputs.version }}"
+          # Note: trivy-action often uses @master, but test version if specified
+          if [[ "${{ steps.extract.outputs.version }}" != "master" ]]; then
+            curl -f "https://api.github.com/repos/aquasecurity/trivy-action/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
+          else
+            curl -f "https://api.github.com/repos/aquasecurity/trivy-action" > /dev/null
+          fi
+          echo "✅ aquasecurity/trivy-action@${{ steps.extract.outputs.version }} is available"
 
       - name: Test generic action availability
         run: |

@@ -180,6 +180,8 @@ jobs:
 
       - name: Update flake.lock and create audit trail
         if: steps.candidate.outputs.found == 'true' && steps.validate.outputs.validation_passed == 'true' && inputs.promotion_target == 'stable'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           COMMIT=${{ steps.candidate.outputs.commit_hash }}
           SHORT_HASH=${{ steps.candidate.outputs.short_hash }}

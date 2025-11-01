@@ -38,6 +38,7 @@ This repository contains reusable GitHub Actions workflows for the NixLine organ
   - [Flake Updates](#flake-updates-nixline-flake-updateyml)
   - [Policy Lock Updates](#policy-lock-updates-nixline-policy-flake-lock-onlyyml)
   - [Pre-commit Hooks](#pre-commit-hooks-nixline-pre-commityml)
+  - [Branch Sync](#branch-sync-nixline-sync-unstableyml)
   - [Stable Tag Updates](#stable-tag-updates-update-stable-tagyml)
   - [Workflow Validation](#workflow-validation-validate-workflowsyml)
   - [Flake Lock Updates](#flake-lock-updates-nixline-flake-lock-updateyml)
@@ -191,6 +192,7 @@ This repository provides several reusable workflows for NixLine automation. Each
 | `nixline-branch-validation.yml` | **Complete automation: unstable → main → stable** | Baseline repos | Complete automation workflow |
 | `nixline-policy-sync-smart.yml` | **Smart policy sync (RECOMMENDED)** | Consumer repos | Adaptive |
 | `nixline-promote-to-stable.yml` | **Promote commits to stable with validation and audit trail** | Baseline repos | Release management |
+| `nixline-sync-unstable.yml` | **Sync unstable branch with main to maintain hierarchy** | Baseline repos | Branch management |
 | `nixline-stable-candidate-update.yml` | **Update .stable-candidate tracking file with automation safeguards** | Baseline repos | Stable candidate management |
 | `nixline-policy-sync.yml` | ~~Direct policy sync~~ **DEPRECATED** | Legacy only | Direct commit |
 | `nixline-policy-sync-pr.yml` | ~~Policy sync with PRs~~ **DEPRECATED** | Legacy only | Auto-approved PRs |
@@ -1245,6 +1247,43 @@ graph TD
 ```
 
 **Important:** This workflow runs automatically on every push to main, ensuring consumer repos always reference the latest stable code.
+
+### Branch Sync (`nixline-sync-unstable.yml`)
+Maintains proper branch hierarchy by syncing main branch changes into unstable branch.
+
+**Purpose:** Keeps unstable branch ahead of main after promotions by merging latest main commits into unstable. Essential for maintaining the correct development workflow where unstable→main→stable.
+
+**Features:**
+- Fast-forward and three-way merging support
+- Automatic conflict detection and issue creation
+- Works only with branches, never touches tags
+- Validates sync results after completion
+- Comprehensive logging and status reporting
+
+**When to Use:**
+- After promoting commits from unstable to main
+- When main branch gets direct commits (emergency fixes)
+- As part of baseline repository automation
+
+**Usage:**
+```yaml
+# .github/workflows/sync-unstable.yml
+name: Sync Unstable Branch
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+  issues: write
+jobs:
+  sync-unstable:
+    uses: NixLine-org/.github/.github/workflows/nixline-sync-unstable.yml@stable
+    with:
+      target_branch: unstable
+      source_branch: main
+```
+
+**Important:** This workflow only operates on branches. It never pushes to or modifies the `unstable` or `stable` tags.
 
 ### Stable Tag Updates (`update-stable-tag.yml`)
 

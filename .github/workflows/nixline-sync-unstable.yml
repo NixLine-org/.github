@@ -1,13 +1,13 @@
 #
 # NixLine Sync Unstable Branch (reusable)
 #
-# Ensures unstable branch stays in sync with main branch by merging main into unstable.
-# This maintains the correct branch hierarchy where unstable is always ahead of main,
-# and main only gets updates through the promotion workflow from unstable.
+# Merges main branch into unstable branch to maintain proper hierarchy.
+# Ensures unstable branch stays ahead of main after promotions by syncing
+# latest main commits into unstable. Only operates on branches, never tags.
 #
-# Triggered by: workflow_call when main branch is updated
-# Purpose: Maintain proper branch hierarchy and prevent unstable from falling behind
-# Features: Fast-forward merging, conflict detection, automatic sync validation
+# Triggered by: workflow_call after main branch updates
+# Purpose: Keep unstable branch ahead of main in development workflow
+# Features: Fast-forward and three-way merging, conflict detection, issue creation
 #
 
 name: NixLine Sync Unstable Branch (reusable)
@@ -28,7 +28,8 @@ on:
 
 # Note: This workflow requires the following permissions:
 # permissions:
-#   contents: write         # To merge main into unstable branch
+#   contents: write         # To merge main into unstable branch and push changes
+#   issues: write           # To create issues when merge conflicts occur
 
 jobs:
   sync-unstable:

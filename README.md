@@ -1813,6 +1813,17 @@ Why separate? The `.github` repo defines the automation infrastructure. It needs
 
 ## Maintenance
 
+### Dependency Management
+
+This repository includes automated dependency management via [Dependabot](/.github/dependabot.yml) to keep GitHub Actions up to date:
+
+- **Automatic Updates**: Weekly scans for new versions of GitHub Actions dependencies
+- **Scope**: Updates actions like `DeterminateSystems/nix-action`, `peter-evans/*`, `actions/checkout`, and others
+- **Review Process**: Pull requests created with appropriate reviewers assigned
+- **Rate Limiting**: Limited to 10 open PRs to prevent spam
+
+**Dependabot Configuration Location**: `.github/dependabot.yml` (outside workflows directory as required by GitHub)
+
 ### Adding New Workflows
 
 1. Create workflow in `.github/workflows/`

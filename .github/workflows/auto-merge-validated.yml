@@ -28,8 +28,11 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
       - name: Wait for validation to complete
-        uses: lewagon/wait-on-check-action@v1.3.4
+        uses: lewagon/wait-on-check-action@v1.4.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           check-name: 'validate'

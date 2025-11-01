@@ -228,7 +228,10 @@ jobs:
           fi
 
       - name: Test other actions compatibility
-        if: ${{ !contains(steps.extract.outputs.action, 'DeterminateSystems') && steps.extract.outputs.action != 'actions/checkout' && steps.extract.outputs.action != 'actions/setup-node' && steps.extract.outputs.action != 'actions/setup-python' }}
+        if: ${{ !contains(steps.extract.outputs.action, 'DeterminateSystems') &&
+                steps.extract.outputs.action != 'actions/checkout' &&
+                steps.extract.outputs.action != 'actions/setup-node' &&
+                steps.extract.outputs.action != 'actions/setup-python' }}
         run: |
           ACTION="${{ steps.extract.outputs.action }}"
           VERSION="${{ steps.extract.outputs.version }}"

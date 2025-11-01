@@ -220,7 +220,35 @@ jobs:
           # Create branch for audit commit (to work with branch protection)
           BRANCH_NAME="stable-promotion-$(date +%s)"
           git checkout -b "$BRANCH_NAME"
-          git push origin "$BRANCH_NAME"
+
+          # Try to push the branch, handling potential conflicts
+          if ! git push origin "$BRANCH_NAME"; then
+            echo "Branch push failed, attempting to resolve conflicts"
+            git checkout main
+            git pull origin main --rebase
+
+            # Re-apply our changes on top of latest main
+            nix flake update
+            if [[ -f "templates/consumer/flake.nix" ]]; then
+              cd templates/consumer
+              nix flake update
+              cd ../..
+            fi
+            echo "$COMMIT" > .stable-candidate
+
+            # Re-commit with latest changes
+            git add flake.lock .stable-candidate
+            if [[ -f "templates/consumer/flake.lock" ]]; then
+              git add templates/consumer/flake.lock
+            fi
+            git commit --amend --no-edit
+
+            # Recreate branch
+            git branch -D "$BRANCH_NAME" || true
+            git checkout -b "$BRANCH_NAME"
+          fi
+
+          git push origin "$BRANCH_NAME" --force-with-lease
 
           # Create PR for the audit commit
           gh pr create \

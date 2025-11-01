@@ -54,7 +54,7 @@ jobs:
           fi
 
       - name: Test DeterminateSystems actions
-        if: contains(steps.extract.outputs.action, 'DeterminateSystems')
+        if: ${{ contains(steps.extract.outputs.action, 'DeterminateSystems') }}
         run: |
           echo "Testing DeterminateSystems action: ${{ steps.extract.outputs.action }}@v${{ steps.extract.outputs.version }}"
           # Create minimal test workflow to verify action loads
@@ -70,49 +70,49 @@ jobs:
           echo "Action appears to be valid (syntax check passed)"
 
       - name: Test actions/checkout
-        if: steps.extract.outputs.action == 'actions/checkout'
+        if: ${{ steps.extract.outputs.action == 'actions/checkout' }}
         uses: actions/checkout@v${{ steps.extract.outputs.version }}
         with:
           path: test-checkout
 
       - name: Test actions/setup-node
-        if: steps.extract.outputs.action == 'actions/setup-node'
+        if: ${{ steps.extract.outputs.action == 'actions/setup-node' }}
         uses: actions/setup-node@v${{ steps.extract.outputs.version }}
         with:
           node-version: '18'
 
       - name: Test Node.js installation
-        if: steps.extract.outputs.action == 'actions/setup-node'
+        if: ${{ steps.extract.outputs.action == 'actions/setup-node' }}
         run: |
           node --version
           npm --version
 
       - name: Test actions/setup-python
-        if: steps.extract.outputs.action == 'actions/setup-python'
+        if: ${{ steps.extract.outputs.action == 'actions/setup-python' }}
         uses: actions/setup-python@v${{ steps.extract.outputs.version }}
         with:
           python-version: '3.11'
 
       - name: Test Python installation
-        if: steps.extract.outputs.action == 'actions/setup-python'
+        if: ${{ steps.extract.outputs.action == 'actions/setup-python' }}
         run: |
           python --version
           pip --version
 
       - name: Test actions/upload-artifact
-        if: steps.extract.outputs.action == 'actions/upload-artifact'
+        if: ${{ steps.extract.outputs.action == 'actions/upload-artifact' }}
         run: |
           echo "test content" > test-file.txt
 
       - name: Upload test artifact
-        if: steps.extract.outputs.action == 'actions/upload-artifact'
+        if: ${{ steps.extract.outputs.action == 'actions/upload-artifact' }}
         uses: actions/upload-artifact@v${{ steps.extract.outputs.version }}
         with:
           name: test-artifact
           path: test-file.txt
 
       - name: Test peter-evans actions
-        if: contains(steps.extract.outputs.action, 'peter-evans')
+        if: ${{ contains(steps.extract.outputs.action, 'peter-evans') }}
         run: |
           echo "Testing peter-evans action: ${{ steps.extract.outputs.action }}@v${{ steps.extract.outputs.version }}"
           echo "Note: peter-evans actions require write permissions, testing syntax only"
@@ -121,7 +121,7 @@ jobs:
           echo "Action repository is accessible"
 
       - name: Test GitHub CodeQL action
-        if: contains(steps.extract.outputs.action, 'github/codeql-action')
+        if: ${{ contains(steps.extract.outputs.action, 'github/codeql-action') }}
         run: |
           echo "Testing CodeQL action: ${{ steps.extract.outputs.action }}@v${{ steps.extract.outputs.version }}"
           # CodeQL actions require specific setup, testing availability only
@@ -129,7 +129,7 @@ jobs:
           echo "CodeQL action repository is accessible"
 
       - name: Test lewagon/wait-on-check-action
-        if: steps.extract.outputs.action == 'lewagon/wait-on-check-action'
+        if: ${{ steps.extract.outputs.action == 'lewagon/wait-on-check-action' }}
         run: |
           echo "Testing wait-on-check-action: ${{ steps.extract.outputs.action }}@v${{ steps.extract.outputs.version }}"
           # This action requires specific inputs, testing availability only

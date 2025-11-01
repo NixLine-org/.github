@@ -49,11 +49,12 @@ on:
         type: boolean
         default: true
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  security-events: write
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write         # To update unstable tags and create commits
+#   pull-requests: write    # To create and manage promotion PRs
+#   issues: write           # To create validation failure issues
+#   security-events: write  # For CodeQL security analysis
 
 jobs:
   update-unstable:

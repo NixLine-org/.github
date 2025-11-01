@@ -45,9 +45,6 @@ on:
 # permissions:
 #   contents: write         # To commit pre-commit fixes
 
-permissions:
-  contents: write
-
 jobs:
   pre-commit:
     runs-on: ubuntu-latest

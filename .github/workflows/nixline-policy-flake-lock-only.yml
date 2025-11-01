@@ -17,8 +17,6 @@ on:
 # permissions:
 #   contents: read          # To read policy configuration
 
-permissions:
-  contents: read
 jobs:
   policy:
     runs-on: ubuntu-latest

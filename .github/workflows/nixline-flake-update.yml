@@ -31,9 +31,6 @@ on:
 #   contents: write         # To commit flake.lock updates
 #   pull-requests: write    # To create PRs for updates
 
-permissions:
-  contents: write
-  pull-requests: write
 jobs:
   update-flake-lock:
     runs-on: ubuntu-latest

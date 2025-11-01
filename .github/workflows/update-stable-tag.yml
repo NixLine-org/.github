@@ -53,9 +53,6 @@ on:
 # permissions:
 #   contents: write         # To update and push tags
 
-permissions:
-  contents: write
-
 jobs:
   update-stable-tag:
     runs-on: ubuntu-latest

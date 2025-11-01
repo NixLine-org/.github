@@ -46,10 +46,6 @@ on:
 #   pull-requests: write    # To approve and enable auto-merge on PRs
 #   contents: write         # To read PR details
 
-permissions:
-  pull-requests: write
-  contents: write
-
 jobs:
   auto-approve:
     if: |

@@ -21,9 +21,6 @@ on:
 #   contents: write         # To enable auto-merge
 #   pull-requests: write    # To approve Dependabot PRs
 
-permissions:
-  contents: write
-  pull-requests: write
 jobs:
   automerge:
     runs-on: ubuntu-latest

@@ -49,11 +49,6 @@ on:
 #   pull-requests: write    # To create policy sync PRs
 #   issues: write           # To create issues on sync failures
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-
 jobs:
   policy-sync:
     runs-on: ubuntu-latest

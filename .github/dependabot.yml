@@ -1,0 +1,22 @@
+#
+# Dependabot Configuration for .github Repository
+#
+# Automatically updates GitHub Actions dependencies across all reusable workflows.
+# Keeps actions like DeterminateSystems/nix-action, peter-evans/*, actions/checkout@v5,
+# and other workflow dependencies current with weekly scans.
+#
+# Documentation: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "NixLine-org/maintainers"
+    commit-message:
+      prefix: "deps"
+      include: "scope"

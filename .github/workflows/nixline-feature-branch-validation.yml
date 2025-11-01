@@ -47,11 +47,6 @@ on:
 #   security-events: write   # For CodeQL analysis
 #   pull-requests: read      # To read PR information
 
-permissions:
-  contents: read
-  security-events: write
-  pull-requests: read
-
 jobs:
   # Security analysis with CodeQL
   security-analysis:

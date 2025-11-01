@@ -109,17 +109,35 @@ jobs:
         if: ${{ steps.extract.outputs.action == 'actions/setup-node' }}
         run: |
           echo "Testing actions/setup-node@v${{ steps.extract.outputs.version }}"
-          # Test by verifying the version exists
-          curl -f "https://api.github.com/repos/actions/setup-node/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
-          echo "✅ actions/setup-node@v${{ steps.extract.outputs.version }} is available"
+          VERSION="${{ steps.extract.outputs.version }}"
+
+          # Try multiple version formats for setup-node
+          if curl -f "https://api.github.com/repos/actions/setup-node/releases/tags/v$VERSION" > /dev/null 2>&1; then
+            echo "✅ actions/setup-node@v$VERSION is available"
+          elif curl -f "https://api.github.com/repos/actions/setup-node/releases/tags/v$VERSION.0.0" > /dev/null 2>&1; then
+            echo "✅ actions/setup-node@v$VERSION.0.0 is available"
+          else
+            echo "❌ Could not find actions/setup-node version $VERSION"
+            exit 1
+          fi
 
       - name: Test actions/setup-python
         if: ${{ steps.extract.outputs.action == 'actions/setup-python' }}
         run: |
           echo "Testing actions/setup-python@v${{ steps.extract.outputs.version }}"
-          # Test by verifying the version exists
-          curl -f "https://api.github.com/repos/actions/setup-python/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
-          echo "✅ actions/setup-python@v${{ steps.extract.outputs.version }} is available"
+          VERSION="${{ steps.extract.outputs.version }}"
+
+          # Try multiple version formats for setup-python
+          if curl -f "https://api.github.com/repos/actions/setup-python/releases/tags/v$VERSION" > /dev/null 2>&1; then
+            echo "✅ actions/setup-python@v$VERSION is available"
+          elif curl -f "https://api.github.com/repos/actions/setup-python/releases/tags/v$VERSION.0.0" > /dev/null 2>&1; then
+            echo "✅ actions/setup-python@v$VERSION.0.0 is available"
+          else
+            echo "❌ Could not find actions/setup-python version $VERSION"
+            echo "Checking what versions are available..."
+            curl -s "https://api.github.com/repos/actions/setup-python/releases" | grep -o '"tag_name": "v[^"]*"' | head -5
+            exit 1
+          fi
 
       - name: Test actions/upload-artifact
         if: ${{ steps.extract.outputs.action == 'actions/upload-artifact' }}
@@ -211,6 +229,35 @@ jobs:
       - name: Test generic action availability
         run: |
           echo "Testing general availability of: ${{ steps.extract.outputs.action }}@v${{ steps.extract.outputs.version }}"
-          # Verify the action repository exists and version tag is available
-          curl -f "https://api.github.com/repos/${{ steps.extract.outputs.action }}/releases/tags/v${{ steps.extract.outputs.version }}" > /dev/null
-          echo "✅ Action ${{ steps.extract.outputs.action }}@v${{ steps.extract.outputs.version }} is available"
+
+          # Try multiple version formats to handle semantic versioning
+          VERSION="${{ steps.extract.outputs.version }}"
+          ACTION="${{ steps.extract.outputs.action }}"
+
+          # First try exact version (v6)
+          if curl -f "https://api.github.com/repos/$ACTION/releases/tags/v$VERSION" > /dev/null 2>&1; then
+            echo "✅ Found exact version: $ACTION@v$VERSION"
+            exit 0
+          fi
+
+          # Try with .0.0 suffix (v6.0.0)
+          if curl -f "https://api.github.com/repos/$ACTION/releases/tags/v$VERSION.0.0" > /dev/null 2>&1; then
+            echo "✅ Found semantic version: $ACTION@v$VERSION.0.0"
+            exit 0
+          fi
+
+          # Try without v prefix (6, 6.0.0)
+          if curl -f "https://api.github.com/repos/$ACTION/releases/tags/$VERSION" > /dev/null 2>&1; then
+            echo "✅ Found version without v prefix: $ACTION@$VERSION"
+            exit 0
+          fi
+
+          if curl -f "https://api.github.com/repos/$ACTION/releases/tags/$VERSION.0.0" > /dev/null 2>&1; then
+            echo "✅ Found semantic version without v: $ACTION@$VERSION.0.0"
+            exit 0
+          fi
+
+          # If none work, fail with clear error
+          echo "❌ Could not find any valid version tag for $ACTION version $VERSION"
+          echo "Tried: v$VERSION, v$VERSION.0.0, $VERSION, $VERSION.0.0"
+          exit 1

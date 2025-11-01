@@ -14,14 +14,14 @@ name: Test Dependabot Updates
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    # Note: Job only runs for Dependabot PRs via if condition
+    # Note: Job only runs for Dependabot PRs via PR author check
 
 permissions:
   contents: read
 
 jobs:
   detect-and-test:
-    if: github.actor == 'dependabot[bot]'
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

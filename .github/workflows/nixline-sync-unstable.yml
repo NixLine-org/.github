@@ -1,0 +1,201 @@
+#
+# NixLine Sync Unstable Branch (reusable)
+#
+# Ensures unstable branch stays in sync with main branch by merging main into unstable.
+# This maintains the correct branch hierarchy where unstable is always ahead of main,
+# and main only gets updates through the promotion workflow from unstable.
+#
+# Triggered by: workflow_call when main branch is updated
+# Purpose: Maintain proper branch hierarchy and prevent unstable from falling behind
+# Features: Fast-forward merging, conflict detection, automatic sync validation
+#
+
+name: NixLine Sync Unstable Branch (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      target_branch:
+        description: 'Target unstable branch name'
+        required: false
+        type: string
+        default: 'unstable'
+      source_branch:
+        description: 'Source branch to sync from'
+        required: false
+        type: string
+        default: 'main'
+
+# Note: This workflow requires the following permissions:
+# permissions:
+#   contents: write         # To merge main into unstable branch
+
+jobs:
+  sync-unstable:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Check branch status
+        id: check
+        run: |
+          SOURCE_BRANCH="${{ inputs.source_branch }}"
+          TARGET_BRANCH="${{ inputs.target_branch }}"
+
+          echo "Source branch: $SOURCE_BRANCH"
+          echo "Target branch: $TARGET_BRANCH"
+
+          # Get latest commits
+          SOURCE_COMMIT=$(git rev-parse origin/$SOURCE_BRANCH)
+          TARGET_COMMIT=$(git rev-parse origin/$TARGET_BRANCH)
+
+          echo "source_commit=$SOURCE_COMMIT" >> $GITHUB_OUTPUT
+          echo "target_commit=$TARGET_COMMIT" >> $GITHUB_OUTPUT
+
+          echo "$SOURCE_BRANCH is at: $SOURCE_COMMIT"
+          echo "$TARGET_BRANCH is at: $TARGET_COMMIT"
+
+          # Check if unstable is behind main
+          if git merge-base --is-ancestor $SOURCE_COMMIT $TARGET_COMMIT; then
+            echo "sync_needed=false" >> $GITHUB_OUTPUT
+            echo "✅ $TARGET_BRANCH is ahead of $SOURCE_BRANCH - no sync needed"
+          else
+            echo "sync_needed=true" >> $GITHUB_OUTPUT
+            echo "🔄 $TARGET_BRANCH needs to be synced with $SOURCE_BRANCH"
+
+            # Check if this would be a fast-forward merge
+            if git merge-base --is-ancestor $TARGET_COMMIT $SOURCE_COMMIT; then
+              echo "merge_type=fast-forward" >> $GITHUB_OUTPUT
+              echo "This will be a fast-forward merge"
+            else
+              echo "merge_type=three-way" >> $GITHUB_OUTPUT
+              echo "This will require a three-way merge"
+            fi
+          fi
+
+      - name: Sync unstable branch
+        if: steps.check.outputs.sync_needed == 'true'
+        run: |
+          SOURCE_BRANCH="${{ inputs.source_branch }}"
+          TARGET_BRANCH="${{ inputs.target_branch }}"
+
+          # Switch to target branch
+          git checkout $TARGET_BRANCH
+
+          # Merge source branch into target
+          if [ "${{ steps.check.outputs.merge_type }}" = "fast-forward" ]; then
+            echo "Performing fast-forward merge..."
+            git merge --ff-only origin/$SOURCE_BRANCH
+          else
+            echo "Performing three-way merge..."
+            git merge origin/$SOURCE_BRANCH -m "Sync $TARGET_BRANCH with $SOURCE_BRANCH
+
+          Automated sync to keep $TARGET_BRANCH ahead of $SOURCE_BRANCH.
+
+          Merged commits from $SOURCE_BRANCH: ${{ steps.check.outputs.source_commit }}
+          Previous $TARGET_BRANCH commit: ${{ steps.check.outputs.target_commit }}"
+          fi
+
+          # Push the updated branch
+          git push origin $TARGET_BRANCH
+
+      - name: Handle merge conflicts
+        if: failure() && steps.check.outputs.sync_needed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Unstable branch sync failed - merge conflicts detected',
+              body: `## Unstable Branch Sync Failure
+
+            The automated sync of the \`${{ inputs.target_branch }}\` branch with \`${{ inputs.source_branch }}\` failed due to merge conflicts.
+
+            **Source branch:** \`${{ inputs.source_branch }}\` at \`${{ steps.check.outputs.source_commit }}\`
+            **Target branch:** \`${{ inputs.target_branch }}\` at \`${{ steps.check.outputs.target_commit }}\`
+            **Workflow run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            ### Manual Resolution Required
+
+            To resolve this conflict:
+
+            1. \`\`\`bash
+               git checkout ${{ inputs.target_branch }}
+               git pull origin ${{ inputs.target_branch }}
+               git merge origin/${{ inputs.source_branch }}
+               \`\`\`
+
+            2. Resolve any merge conflicts in the affected files
+
+            3. \`\`\`bash
+               git add .
+               git commit -m "Resolve merge conflicts in ${{ inputs.target_branch }} sync"
+               git push origin ${{ inputs.target_branch }}
+               \`\`\`
+
+            ### Why This Happened
+
+            This usually occurs when:
+            - Direct commits were made to \`${{ inputs.source_branch }}\` outside the normal promotion workflow
+            - Conflicting changes exist between the branches
+            - The branch history has diverged unexpectedly
+
+            **Important:** After resolving, ensure the promotion workflow from \`${{ inputs.target_branch }}\` to \`${{ inputs.source_branch }}\` still works correctly.`,
+              labels: ['automated', 'merge-conflict', 'branch-sync']
+            });
+
+      - name: Verify sync result
+        if: steps.check.outputs.sync_needed == 'true' && success()
+        run: |
+          SOURCE_BRANCH="${{ inputs.source_branch }}"
+          TARGET_BRANCH="${{ inputs.target_branch }}"
+
+          # Verify the merge was successful
+          NEW_TARGET_COMMIT=$(git rev-parse HEAD)
+          SOURCE_COMMIT="${{ steps.check.outputs.source_commit }}"
+
+          echo "Verifying sync result..."
+          echo "New $TARGET_BRANCH commit: $NEW_TARGET_COMMIT"
+          echo "Source $SOURCE_BRANCH commit: $SOURCE_COMMIT"
+
+          # Verify that target branch now contains all commits from source branch
+          if git merge-base --is-ancestor $SOURCE_COMMIT $NEW_TARGET_COMMIT; then
+            echo "✅ Sync successful: $TARGET_BRANCH now contains all commits from $SOURCE_BRANCH"
+          else
+            echo "❌ Sync verification failed: $TARGET_BRANCH does not contain all commits from $SOURCE_BRANCH"
+            exit 1
+          fi
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.check.outputs.sync_needed }}" = "true" ]; then
+            echo "### Branch Sync Summary" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- **Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Source Branch:** ${{ inputs.source_branch }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Target Branch:** ${{ inputs.target_branch }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Merge Type:** ${{ steps.check.outputs.merge_type }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Status:** Successfully synced" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The ${{ inputs.target_branch }} branch is now up to date with ${{ inputs.source_branch }}." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Branch Sync Summary" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- **Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Source Branch:** ${{ inputs.source_branch }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Target Branch:** ${{ inputs.target_branch }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Status:** No sync needed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The ${{ inputs.target_branch }} branch is already ahead of ${{ inputs.source_branch }}." >> $GITHUB_STEP_SUMMARY
+          fi

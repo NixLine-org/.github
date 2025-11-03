@@ -70,7 +70,7 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@v20
 
       - name: Setup Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v2
+        uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - name: Run governance migration
         id: migrate
